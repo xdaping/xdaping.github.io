@@ -5,12 +5,12 @@ permalink: /posts/:title.html
 excerpt_separator: "<!-- TOC -->"
 #excerpt_separator: "<!-- more -->"
 
-github: daiwk
-author: "daiwk"
-email: daiwk#foxmail.com
-name: "daiwk-github博客"
-url: http://daiwk.github.io
-domain: daiwk.github.io
+github: xdaping
+author: "xdaping"
+email: xdaping#163.com
+name: "xdaping-github博客"
+url: http://xdaping.github.io
+domain: xdaping.github.io
 all_categories: [
 ["links", "常用链接", "/posts/links.html"],
 ["knowledge", "基础知识", "/posts/knowledge.html"],
@@ -22,7 +22,7 @@ all_categories: [
 ["nlp", "自然语言处理","/posts/nlp.html"], 
 ["audio", "语音处理","/posts/audio.html"], 
 ["video", "视频处理","/posts/video.html"], 
-["other", "杂记","/posts/other.html"],
+["other", "其他","/posts/other.html"],
 ["about", "关于","/about.html"]
 ]
 
