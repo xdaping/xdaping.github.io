@@ -20,6 +20,8 @@ tags: [lightgbm, ]
 
 参考[http://www.jianshu.com/p/48e82dbb142b](http://www.jianshu.com/p/48e82dbb142b)
 
+参考API[https://lightgbm.readthedocs.io/en/latest/index.html](https://lightgbm.readthedocs.io/en/latest/index.html)
+
 ## 安装
 
 ### 安装cxx包
