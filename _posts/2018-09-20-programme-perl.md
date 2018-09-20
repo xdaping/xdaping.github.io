@@ -1,6 +1,6 @@
 ---
 layout: post
-category: "knowledge"
+category: "programme"
 title: "perl"
 tags: [perl]
 ---
