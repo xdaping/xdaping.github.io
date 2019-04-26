@@ -3,6 +3,7 @@ layout: page
 title: "关于：About"
 ---
 Welcome to visit my blog!
+https://github.com/xdaping/xdaping.github.io
 
 #### 1.Personal Info
 Name: xdaping   
