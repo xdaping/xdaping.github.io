@@ -1,6 +1,8 @@
 Jekyll博客模板
 ================
 
+https://github.com/xdaping/xdaping.github.io
+
 #### 0.by xdaping
 download mathjax to offline deploy:
 https://github.com/mathjax/MathJax/archive/master.zip
