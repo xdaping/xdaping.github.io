@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>数据统计</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #f9f9f9;
+        }
+        h1 {
+            font-size: 3rem;
+            color: #333;
+            font-family: 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+        }
+        #result {
+            margin-top: 2em;
+            font-size: 1.5rem;
+            color: #007bff;
+        }
+        .btn {
+            font-size: 1.2rem;
+            padding: 0.5em 2em;
+            margin-top: 1em;
+        }
+    </style>
+</head>
+<body>
+    <h1>数据统计</h1>
+    <input type="file" id="excelFile" accept=".xlsx,.xls" />
+    <button class="btn" onclick="countSheets()">运行</button>
+    <div id="result"></div>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        function countSheets() {
+            const fileInput = document.getElementById('excelFile');
+            const resultDiv = document.getElementById('result');
+            if (!fileInput.files.length) {
+                resultDiv.textContent = '请先选择一个Excel文件';
+                return;
+            }
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheetCount = workbook.SheetNames.length;
+                resultDiv.textContent = `该Excel文件包含 ${sheetCount} 个sheet`;
+            };
+            reader.readAsArrayBuffer(file);
+        }
+    </script>
+</body>
+</html> 
