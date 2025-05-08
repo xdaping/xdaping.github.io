@@ -124,7 +124,7 @@ function processExcel() {
                 const num_money = getValue(row[1]);
                 const dt_money = getValue(row[6]);
                 const money = Math.round((num_money + dt_money) * 100) / 100;
-                if (name === "车间主任复核签字：") break;
+                if (name === "车间主任复核签字：" || name === "") break;
                 if (!name || !money || money <= 0 || name === "总件薪") continue;
                 if (!user_salary_dict[name]) user_salary_dict[name] = [];
                 user_salary_dict[name].push(money);
