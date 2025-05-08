@@ -1,4 +1,4 @@
-Jekyll博客模板
+博客模板
 ================
 
 https://github.com/xdaping/xdaping.github.io
