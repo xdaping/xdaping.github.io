@@ -295,26 +295,26 @@
       </div>
 
       <div class="form-group">
-        <label>Y — 本月总费用 <span class="sub-label">（Y1 + Y2 应等于 Y）</span></label>
+        <label>Y — 本月总费用 <span class="sub-label" id="Y_hint">（填写另外两项可自动推算）</span></label>
         <div class="input-wrap">
           <span class="prefix">¥</span>
-          <input type="number" id="Y" placeholder="如 2000" min="0" step="0.01" />
+          <input type="number" id="Y" placeholder="如 2000" min="0" step="0.01" oninput="autoCalc('Y')" />
         </div>
       </div>
 
       <div class="form-group">
-        <label>Y1 — A 实际垫付 <span class="sub-label">（本月 A 垫了多少）</span></label>
+        <label>Y1 — A 实际垫付 <span class="sub-label" id="Y1_hint">（填写另外两项可自动推算）</span></label>
         <div class="input-wrap">
           <span class="prefix">¥</span>
-          <input type="number" id="Y1" placeholder="如 500" min="0" step="0.01" />
+          <input type="number" id="Y1" placeholder="如 500" min="0" step="0.01" oninput="autoCalc('Y1')" />
         </div>
       </div>
 
       <div class="form-group">
-        <label>Y2 — B 实际垫付 <span class="sub-label">（本月 B 垫了多少）</span></label>
+        <label>Y2 — B 实际垫付 <span class="sub-label" id="Y2_hint">（填写另外两项可自动推算）</span></label>
         <div class="input-wrap">
           <span class="prefix">¥</span>
-          <input type="number" id="Y2" placeholder="如 1500" min="0" step="0.01" />
+          <input type="number" id="Y2" placeholder="如 1500" min="0" step="0.01" oninput="autoCalc('Y2')" />
         </div>
       </div>
     </div>
@@ -449,6 +449,78 @@
     }
   }
 
+  // 标记哪个字段是「被自动填入」的，避免循环触发
+  let autoFilledField = null;
+
+  function setAutoStyle(id, isAuto) {
+    const el = document.getElementById(id);
+    const hint = document.getElementById(id + '_hint');
+    if (isAuto) {
+      el.style.background = '#f0f4ff';
+      el.style.color = '#667eea';
+      if (hint) { hint.textContent = '（已自动推算）'; hint.style.color = '#667eea'; }
+    } else {
+      el.style.background = '';
+      el.style.color = '';
+      if (hint) { hint.textContent = '（填写另外两项可自动推算）'; hint.style.color = ''; }
+    }
+  }
+
+  function autoCalc(changed) {
+    // 如果当前修改的字段正是被自动填入的字段，说明用户手动覆盖了，取消自动状态
+    if (autoFilledField === changed) {
+      autoFilledField = null;
+      setAutoStyle(changed, false);
+    }
+
+    const Y  = parseFloat(document.getElementById('Y').value);
+    const Y1 = parseFloat(document.getElementById('Y1').value);
+    const Y2 = parseFloat(document.getElementById('Y2').value);
+
+    const hasY  = !isNaN(Y);
+    const hasY1 = !isNaN(Y1);
+    const hasY2 = !isNaN(Y2);
+
+    // 根据哪两个有值，推算第三个（且第三个不是当前正在编辑的字段）
+    if (hasY && hasY1 && !hasY2 && changed !== 'Y2') {
+      const val = +(Y - Y1).toFixed(2);
+      document.getElementById('Y2').value = val >= 0 ? val : '';
+      autoFilledField = 'Y2';
+      setAutoStyle('Y2', val >= 0);
+      setAutoStyle('Y', false);
+      setAutoStyle('Y1', false);
+    } else if (hasY && hasY2 && !hasY1 && changed !== 'Y1') {
+      const val = +(Y - Y2).toFixed(2);
+      document.getElementById('Y1').value = val >= 0 ? val : '';
+      autoFilledField = 'Y1';
+      setAutoStyle('Y1', val >= 0);
+      setAutoStyle('Y', false);
+      setAutoStyle('Y2', false);
+    } else if (hasY1 && hasY2 && !hasY && changed !== 'Y') {
+      const val = +(Y1 + Y2).toFixed(2);
+      document.getElementById('Y').value = val;
+      autoFilledField = 'Y';
+      setAutoStyle('Y', true);
+      setAutoStyle('Y1', false);
+      setAutoStyle('Y2', false);
+    } else if (hasY && hasY1 && hasY2) {
+      // 三个都有值时，被自动填入的那个跟随变化
+      if (autoFilledField === 'Y2' && changed !== 'Y2') {
+        const val = +(Y - Y1).toFixed(2);
+        document.getElementById('Y2').value = val >= 0 ? val : '';
+        setAutoStyle('Y2', val >= 0);
+      } else if (autoFilledField === 'Y1' && changed !== 'Y1') {
+        const val = +(Y - Y2).toFixed(2);
+        document.getElementById('Y1').value = val >= 0 ? val : '';
+        setAutoStyle('Y1', val >= 0);
+      } else if (autoFilledField === 'Y' && changed !== 'Y') {
+        const val = +(Y1 + Y2).toFixed(2);
+        document.getElementById('Y').value = val;
+        setAutoStyle('Y', true);
+      }
+    }
+  }
+
   function showError(msg) {
     const errEl = document.getElementById('errorMsg');
     errEl.textContent = '⚠️ ' + msg;
@@ -464,4 +536,3 @@
 
 </body>
 </html>
-
