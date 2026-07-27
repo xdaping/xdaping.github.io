@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地理数据可视化</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #app { display: flex; flex-direction: column; }
+  /* 地图使用正常地图高度；页面整体不够时可滚动 */
+  #map { height: 85vh; min-height: 520px; }
+
+  /* 图层控制面板 */
+  .layer-panel {
+    background: #fff; padding: 10px 14px; border-radius: 6px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.4); font-size: 14px; line-height: 2; user-select: none;
+  }
+  .layer-panel label { display: block; cursor: pointer; white-space: nowrap; }
+  .layer-panel .sep { border-top: 1px solid #ddd; margin: 6px 0; }
+  .layer-panel input { vertical-align: -2px; margin-right: 6px; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:-1px; margin-right:4px; }
+
+  /* 底部输入区 */
+  #inputs { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #f5f6f8; border-top: 1px solid #dcdfe3; }
+  .box { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+  .box .hd { flex: 0 0 120px; display:flex; align-items:center; justify-content:space-between; padding-top: 2px; }
+  .box .hd strong { font-size: 14px; }
+  .box .hd .cnt { font-size: 12px; color: #888; }
+  .box-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .exmp { font-size: 11px; color: #8a8f98; line-height: 1.5; margin-bottom: 4px; }
+  .exmp code { background:#eceef1; padding:0 3px; border-radius:3px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .box textarea {
+    width: 100%; height: 58px; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px; padding: 8px; border: 1px solid #cfd4da; border-radius: 5px; background:#fff;
+  }
+  .box textarea.err { border-color:#e5534b; background:#fff6f5; }
+  .msg { font-size:12px; margin-top:4px; }
+  .msg.ok { color:#1a7f37; } .msg.bad { color:#e5534b; }
+  /* 点序号标签 */
+  .leaflet-tooltip.pt-label {
+    background:#fff; color:#1e73ff; font-weight:700; font-size:12px;
+    padding:1px 6px; border:1px solid #1e73ff; border-radius:4px;
+    box-shadow:0 1px 3px rgba(0,0,0,.3);
+  }
+  .leaflet-tooltip.pt-label::before { display:none; }
+  /* 线/面顶点序号标签 */
+  .leaflet-tooltip.vtx-label {
+    background:rgba(255,255,255,.9); font-size:10px; font-weight:600; line-height:1.3;
+    padding:0 3px; border-radius:3px; border:1px solid #888; box-shadow:none;
+  }
+  .leaflet-tooltip.vtx-label::before { display:none; }
+  .vtx-label.vtx-line { color:#0090c0; border-color:#00c2ff; }
+  .vtx-label.vtx-poly { color:#c0392b; border-color:#ff5a3c; }
+  /* 测距工具 */
+  .ruler-ctl a { width:34px; height:34px; line-height:34px; text-align:center; font-size:18px; display:block; }
+  .ruler-ctl a.active { background:#ffe6c2; }
+  .leaflet-tooltip.measure-label {
+    background:#ff9500; color:#fff; border:none; font-size:11px; font-weight:600;
+    padding:1px 6px; border-radius:3px; box-shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  .leaflet-tooltip.measure-label::before { display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+
+  <div id="inputs">
+    <div class="box">
+      <div class="hd"><strong>点 (Point)</strong><span class="cnt" id="cnt-p">0</span></div>
+      <div class="box-main">
+        <div class="exmp">每行一个点，多点也可用分号分隔。例如：<code>POINT (-85.9745005 39.9344051)</code> · <code>-85.9745005 39.9344051</code></div>
+        <textarea id="ta-point" spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="box">
+      <div class="hd"><strong>线 (Line)</strong><span class="cnt" id="cnt-l">0</span></div>
+      <div class="box-main">
+        <div class="exmp">每行一条线，顶点用分号/换行分隔。例如：<code>LINESTRING(-118.36 33.82, -118.37 33.83)</code> · <code>-118.3628708,33.8218108;-118.3628641,33.821828;-118.3630396,33.8218758</code></div>
+        <textarea id="ta-line" spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="box">
+      <div class="hd"><strong>面 (Polygon / AOI)</strong><span class="cnt" id="cnt-a">0</span></div>
+      <div class="box-main">
+        <div class="exmp">每行一个多边形，可不闭合（自动闭合）。例如：<code>POLYGON((-118.36 33.82,-118.37 33.82,-118.37 33.83,-118.36 33.82))</code> · <code>-118.36,33.82;-118.37,33.82;-118.37,33.83</code></div>
+        <textarea id="ta-poly" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ 底图 ============ */
+const baseLayers = {
+  gsat: L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        { subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21, attribution:'谷歌卫星' }),
+  gmap: L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+        { subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21, attribution:'谷歌路网' }),
+  esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom:19, attribution:'Esri 卫星' }),
+  osm:  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        { maxZoom:19, attribution:'© OpenStreetMap' }),
+  amap: L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=7&x={x}&y={y}&z={z}',
+        { subdomains:['1','2','3','4'], maxZoom:18, attribution:'高德地图' }),
+  amapSat: L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+        { subdomains:['1','2','3','4'], maxZoom:18, attribution:'高德卫星' }),
+};
+
+const map = L.map('map', { center:[39.5, -98.35], zoom:4, layers:[baseLayers.gmap] });
+let currentBase = baseLayers.gmap;
+// 默认视野：美国本土全境
+const US_BOUNDS = L.latLngBounds([24.4, -125.0], [49.4, -66.9]);
+map.fitBounds(US_BOUNDS);
+
+/* 图层组：点 / 线 / 面 */
+const groups = {
+  point: L.layerGroup().addTo(map),
+  line:  L.layerGroup().addTo(map),
+  poly:  L.layerGroup().addTo(map),
+};
+
+/* ============ 控制面板 (右上) ============ */
+const Panel = L.Control.extend({
+  options:{ position:'topright' },
+  onAdd:function(){
+    const d = L.DomUtil.create('div','layer-panel');
+    d.innerHTML = `
+      <label><input type="radio" name="base" value="gsat">谷歌卫星</label>
+      <label><input type="radio" name="base" value="gmap" checked>谷歌路网</label>
+      <label><input type="radio" name="base" value="esri">OpenStreet卫星</label>
+      <label><input type="radio" name="base" value="osm">OpenStreet路网</label>
+      <label><input type="radio" name="base" value="amap">高德路网</label>
+      <label><input type="radio" name="base" value="amapSat">高德卫星</label>
+      <div class="sep"></div>
+      <label><input type="checkbox" id="tg-point" checked><span class="swatch" style="background:#1e73ff"></span>点</label>
+      <label><input type="checkbox" id="tg-line" checked><span class="swatch" style="background:#00c2ff"></span>线</label>
+      <label><input type="checkbox" id="tg-poly" checked><span class="swatch" style="background:#ff5a3c"></span>AOI 面</label>
+      <div class="sep"></div>
+      <label><input type="checkbox" id="tg-ptnum" checked>点序号</label>
+      <label><input type="checkbox" id="tg-vtx">线/面顶点序号</label>
+      <label><input type="checkbox" id="fit" checked>自动缩放</label>
+      <label><input type="checkbox" id="swap">坐标为 纬度,经度</label>
+      <div id="msg" class="msg"></div>`;
+    L.DomEvent.disableClickPropagation(d);
+    L.DomEvent.disableScrollPropagation(d);
+    return d;
+  }
+});
+map.addControl(new Panel());
+L.control.scale({ imperial:true, metric:true }).addTo(map);
+
+// 底图切换
+document.querySelectorAll('input[name="base"]').forEach(r=>{
+  r.addEventListener('change', e=>{
+    map.removeLayer(currentBase);
+    currentBase = baseLayers[e.target.value];
+    map.addLayer(currentBase);
+    currentBase.bringToBack();
+  });
+});
+// 图层显隐
+const toggle = (id, g) => document.getElementById(id).addEventListener('change', e=>{
+  e.target.checked ? map.addLayer(g) : map.removeLayer(g);
+});
+toggle('tg-point', groups.point);
+toggle('tg-line',  groups.line);
+toggle('tg-poly',  groups.poly);
+
+/* ============ 测距工具 ============ */
+const measureLayer = L.layerGroup().addTo(map);
+let measuring=false, mPts=[], mLine=null, rulerBtn=null, clickTimer=null;
+
+function setRulerActive(on){ if(rulerBtn) rulerBtn.classList.toggle('active', on); }
+function clearMeasure(){ measureLayer.clearLayers(); mPts=[]; mLine=null; }
+function startMeasure(){
+  clearMeasure(); measuring=true; setRulerActive(true);
+  map.getContainer().style.cursor='crosshair';
+  map.doubleClickZoom.disable();
+}
+function stopMeasure(clear){
+  measuring=false; setRulerActive(false);
+  map.getContainer().style.cursor='';
+  map.doubleClickZoom.enable();
+  if(clear) clearMeasure();
+}
+function addMeasurePoint(ll){
+  mPts.push(ll);
+  let total=0;
+  for(let i=1;i<mPts.length;i++) total += mPts[i-1].distanceTo(mPts[i]);
+  const label = mPts.length===1 ? '起点' : `${total.toFixed(1)} 米`;
+  L.circleMarker(ll,{radius:4,color:'#fff',weight:1.5,fillColor:'#ff9500',fillOpacity:1})
+    .bindTooltip(label,{permanent:true,direction:'top',offset:[0,-4],className:'measure-label'})
+    .addTo(measureLayer);
+  if(mLine) mLine.setLatLngs(mPts);
+  else mLine=L.polyline(mPts,{color:'#ff9500',weight:2,dashArray:'5,5'}).addTo(measureLayer);
+}
+map.on('click', e=>{
+  if(!measuring) return;
+  clearTimeout(clickTimer);
+  clickTimer=setTimeout(()=>addMeasurePoint(e.latlng), 220); // 防止双击误加点
+});
+map.on('dblclick', e=>{ if(measuring){ clearTimeout(clickTimer); stopMeasure(false); } });
+
+const RulerCtl = L.Control.extend({
+  options:{ position:'topright' },
+  onAdd:function(){
+    const d = L.DomUtil.create('div','leaflet-bar ruler-ctl');
+    d.innerHTML = `<a href="#" title="测量距离：点击地图连续取点，双击结束；再次点此清除">📏</a>`;
+    rulerBtn = d.querySelector('a');
+    L.DomEvent.disableClickPropagation(d);
+    L.DomEvent.on(rulerBtn,'click',ev=>{
+      L.DomEvent.preventDefault(ev);
+      if(measuring) stopMeasure(true);   // 测量中 -> 停止并清除
+      else if(mPts.length) clearMeasure(); // 有残留结果 -> 清除
+      else startMeasure();                 // 空闲 -> 开始测量
+    });
+    return d;
+  }
+});
+map.addControl(new RulerCtl());
+
+/* ============ 解析 ============ */
+// 经度纠偏：283.7 -> -76.3
+function normLon(x){ while(x>180)x-=360; while(x<-180)x+=360; return x; }
+const swapEl = document.getElementById('swap');
+// 归一化一个 [a,b] 坐标为 leaflet 的 [lat,lon]
+function toLatLng(a,b){
+  let lon, lat;
+  if(swapEl.checked){ lat=a; lon=b; } else { lon=a; lat=b; }
+  return [lat, normLon(lon)];
+}
+// 从任意字符串抽取所有浮点数
+function nums(s){ return (s.match(/-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g)||[]).map(Number); }
+// 把一段坐标文本解析为顶点数组 [[lat,lon],...]
+function coords(chunk){
+  const out=[];
+  // 优先按分号/换行切成顶点，每个顶点取前两个数字
+  const verts = chunk.split(/[;\n]/).map(v=>v.trim()).filter(Boolean);
+  if(verts.length>1){
+    for(const v of verts){ const n=nums(v); if(n.length>=2) out.push(toLatLng(n[0],n[1])); }
+    if(out.length) return out;
+  }
+  // 否则把整段数字两两配对
+  const n = nums(chunk);
+  for(let i=0;i+1<n.length;i+=2) out.push(toLatLng(n[i],n[i+1]));
+  return out;
+}
+// 尝试解析 GeoJSON，返回 {points:[], lines:[], polys:[]} 或 null
+function parseGeoJSON(text){
+  let obj; try{ obj=JSON.parse(text); }catch(e){ return null; }
+  const res={points:[],lines:[],polys:[]};
+  const geoms=[];
+  (function walk(o){
+    if(!o||typeof o!=='object')return;
+    if(o.type==='FeatureCollection') (o.features||[]).forEach(walk);
+    else if(o.type==='Feature') walk(o.geometry);
+    else if(o.type&&o.coordinates) geoms.push(o);
+  })(obj);
+  const ll = c => toLatLng(c[0],c[1]);
+  for(const g of geoms){
+    const t=g.type, c=g.coordinates;
+    if(t==='Point') res.points.push(ll(c));
+    else if(t==='MultiPoint') c.forEach(p=>res.points.push(ll(p)));
+    else if(t==='LineString') res.lines.push(c.map(ll));
+    else if(t==='MultiLineString') c.forEach(l=>res.lines.push(l.map(ll)));
+    else if(t==='Polygon') res.polys.push(c.map(r=>r.map(ll)));
+    else if(t==='MultiPolygon') c.forEach(p=>res.polys.push(p.map(r=>r.map(ll))));
+  }
+  return res;
+}
+
+// 解析点输入
+function parsePoints(text){
+  const gj=parseGeoJSON(text); if(gj) return gj.points;
+  const pts=[];
+  text.split(/[;\n]/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
+    const n=nums(line);
+    // 一行可能含多个 POINT 或多组坐标
+    for(let i=0;i+1<n.length;i+=2) pts.push(toLatLng(n[i],n[i+1]));
+  });
+  return pts;
+}
+// 解析线输入：每行一条线（WKT 内可能含多段，用括号分组）
+function parseLines(text){
+  const gj=parseGeoJSON(text); if(gj) return gj.lines;
+  const lines=[];
+  text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(row=>{
+    const groupsInParen = row.match(/\(([^()]*)\)/g);
+    if(/MULTILINESTRING|MULTIPOLYGON|POLYGON/i.test(row) && groupsInParen){
+      groupsInParen.forEach(g=>{ const c=coords(g); if(c.length>=2) lines.push(c); });
+    } else if(/LINESTRING/i.test(row) && groupsInParen){
+      const c=coords(groupsInParen[0]); if(c.length>=2) lines.push(c);
+    } else {
+      const c=coords(row); if(c.length>=2) lines.push(c);
+    }
+  });
+  return lines;
+}
+// 解析面输入：每行一个多边形（可含多个环）
+function parsePolys(text){
+  const gj=parseGeoJSON(text); if(gj) return gj.polys;
+  const polys=[];
+  text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(row=>{
+    const rings=[];
+    const inner = row.match(/\(([^()]*)\)/g);
+    if(inner && inner.length){
+      inner.forEach(g=>{ const c=coords(g); if(c.length>=3) rings.push(c); });
+    } else {
+      const c=coords(row); if(c.length>=3) rings.push(c);
+    }
+    if(rings.length) polys.push(rings);
+  });
+  return polys;
+}
+
+/* ============ 渲染 ============ */
+const msg=document.getElementById('msg');
+const pointStyle={ radius:5, color:'#fff', weight:1.5, fillColor:'#1e73ff', fillOpacity:1 };
+const lineStyle ={ color:'#00c2ff', weight:3, opacity:0.9 };
+const polyStyle ={ color:'#ff5a3c', weight:2, fillColor:'#ff5a3c', fillOpacity:0.25 };
+
+function setErr(id, bad){ document.getElementById(id).classList.toggle('err', bad); }
+
+// 给一组顶点按顺序（从 1 开始）添加序号标签。closed=true 时若首尾重合则跳过末点
+function addVtxLabels(verts, group, cls, closed){
+  let n=verts.length;
+  if(closed && n>1 && verts[0][0]===verts[n-1][0] && verts[0][1]===verts[n-1][1]) n--;
+  for(let j=0;j<n;j++){
+    L.circleMarker(verts[j], { radius:3, color:'#fff', weight:1, fillColor:'#333', fillOpacity:1 })
+      .bindTooltip(String(j+1), { permanent:true, direction:'top', offset:[0,-2], className:'vtx-label '+cls })
+      .addTo(group);
+  }
+}
+
+function render(){
+  const tp=document.getElementById('ta-point'), tl=document.getElementById('ta-line'), ta=document.getElementById('ta-poly');
+  Object.values(groups).forEach(g=>g.clearLayers());
+  let bounds=L.latLngBounds([]); let total=0; let errs=[];
+
+  try{
+    const showPtNum=document.getElementById('tg-ptnum').checked;
+    const pts=parsePoints(tp.value); setErr('ta-point', tp.value.trim() && !pts.length);
+    if(tp.value.trim() && !pts.length) errs.push('点');
+    pts.forEach((ll,i)=>{
+      const m=L.circleMarker(ll, pointStyle)
+        .bindPopup(`点 ${i+1}<br>${ll[1].toFixed(6)}, ${ll[0].toFixed(6)}`)
+        .addTo(groups.point);
+      if(showPtNum) m.bindTooltip(String(i+1), { permanent:true, direction:'right', offset:[6,0], className:'pt-label' });
+      bounds.extend(ll); total++;
+    });
+    document.getElementById('cnt-p').textContent=pts.length;
+
+    const showVtx=document.getElementById('tg-vtx').checked;
+
+    const lines=parseLines(tl.value); setErr('ta-line', tl.value.trim() && !lines.length);
+    if(tl.value.trim() && !lines.length) errs.push('线');
+    lines.forEach((c,i)=>{
+      const pl=L.polyline(c, lineStyle).bindPopup(`线 ${i+1}（${c.length} 个顶点）`).addTo(groups.line);
+      if(showVtx) addVtxLabels(c, groups.line, 'vtx-line', false);
+      bounds.extend(pl.getBounds()); total++;
+    });
+    document.getElementById('cnt-l').textContent=lines.length;
+
+    const polys=parsePolys(ta.value); setErr('ta-poly', ta.value.trim() && !polys.length);
+    if(ta.value.trim() && !polys.length) errs.push('面');
+    polys.forEach((rings,i)=>{
+      const pg=L.polygon(rings, polyStyle).bindPopup(`面 ${i+1}（${rings[0].length} 个顶点）`).addTo(groups.poly);
+      if(showVtx) rings.forEach(r=>addVtxLabels(r, groups.poly, 'vtx-poly', true));
+      bounds.extend(pg.getBounds()); total++;
+    });
+    document.getElementById('cnt-a').textContent=polys.length;
+
+    if(document.getElementById('fit').checked && bounds.isValid()) map.fitBounds(bounds.pad(0.15));
+
+    if(errs.length){ msg.className='msg bad'; msg.textContent='无法解析：'+errs.join('、'); }
+    else if(total>0){ msg.className='msg ok'; msg.textContent=`已渲染 ${total} 个图形`; }
+    else { msg.className='msg'; msg.textContent=''; }
+  }catch(e){
+    msg.className='msg bad'; msg.textContent='解析出错：'+e.message; console.error(e);
+  }
+}
+
+// 输入即联动：三个输入框修改后自动渲染（防抖）
+let _t=null;
+const scheduleRender=()=>{ clearTimeout(_t); _t=setTimeout(render, 350); };
+['ta-point','ta-line','ta-poly'].forEach(id=>document.getElementById(id).addEventListener('input', scheduleRender));
+// 选项变化立即重绘
+['fit','swap','tg-ptnum','tg-vtx'].forEach(id=>document.getElementById(id).addEventListener('change', render));
+
+render();
+</script>
+</body>
+</html>
