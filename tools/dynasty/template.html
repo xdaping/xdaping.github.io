@@ -1,0 +1,485 @@
+<title>华夏舆图 · 历代疆域地名</title>
+<style>
+  :root {
+    --paper: #e7e0cb; --paper-deep: #dcd3b8; --paper-panel: #f0ead9;
+    --ink: #262421; --ink-soft: #6b6353; --ink-faint: #948d78;
+    --seal: #a3312a; --seal-soft: rgba(163, 49, 42, 0.14);
+    --jade: #3c6e63; --jade-soft: rgba(60, 110, 99, 0.14); --gold: #a3812f;
+    --hairline: rgba(38, 36, 33, 0.18);
+    --map-sea: #b8d2df; --map-dim: rgba(247, 244, 235, 0.34);
+    --province: rgba(60, 45, 30, 0.35); --river: rgba(70, 150, 180, 0.85);
+    --shadow: 0 8px 28px rgba(38, 34, 24, 0.16);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #191a16; --paper-deep: #14150f; --paper-panel: #211f18;
+      --ink: #e9e3ce; --ink-soft: #b4ac93; --ink-faint: #766f5a;
+      --seal: #d1685c; --seal-soft: rgba(209, 104, 92, 0.18);
+      --jade: #5fa694; --jade-soft: rgba(95, 166, 148, 0.16); --gold: #cbab5c;
+      --hairline: rgba(233, 227, 206, 0.14);
+      --map-sea: #0c1e2a; --map-dim: rgba(3, 9, 13, 0.5);
+      --province: rgba(255, 255, 255, 0.32); --river: rgba(90, 170, 200, 0.85);
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.45); color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #191a16; --paper-deep: #14150f; --paper-panel: #211f18;
+    --ink: #e9e3ce; --ink-soft: #b4ac93; --ink-faint: #766f5a;
+    --seal: #d1685c; --seal-soft: rgba(209, 104, 92, 0.18);
+    --jade: #5fa694; --jade-soft: rgba(95, 166, 148, 0.16); --gold: #cbab5c;
+    --hairline: rgba(233, 227, 206, 0.14);
+    --map-sea: #0c1e2a; --map-dim: rgba(3, 9, 13, 0.5);
+    --province: rgba(255, 255, 255, 0.32); --river: rgba(90, 170, 200, 0.85);
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.45); color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --paper: #e7e0cb; --paper-deep: #dcd3b8; --paper-panel: #f0ead9;
+    --ink: #262421; --ink-soft: #6b6353; --ink-faint: #948d78;
+    --seal: #a3312a; --seal-soft: rgba(163, 49, 42, 0.14);
+    --jade: #3c6e63; --jade-soft: rgba(60, 110, 99, 0.14); --gold: #a3812f;
+    --hairline: rgba(38, 36, 33, 0.18);
+    --map-sea: #b8d2df; --map-dim: rgba(247, 244, 235, 0.34);
+    --province: rgba(60, 45, 30, 0.35); --river: rgba(70, 150, 180, 0.85);
+    --shadow: 0 8px 28px rgba(38, 34, 24, 0.16); color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink);
+    font-family: "PingFang SC","Microsoft YaHei","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; overflow: hidden; }
+  .display { font-family: "STKaiti","KaiTi","Kaiti SC","Noto Serif SC",serif; }
+  .app { display: flex; height: 100vh; width: 100vw; }
+
+  /* ---------- Sidebar ---------- */
+  aside.sidebar { width: 300px; flex-shrink: 0; height: 100%; display: flex; flex-direction: column;
+    background: var(--paper-panel); border-right: 1px solid var(--hairline); overflow-y: auto; scrollbar-width: thin; }
+  .brand { padding: 18px 20px 14px; border-bottom: 1px solid var(--hairline); }
+  .brand h1 { margin: 0; font-size: 27px; font-weight: 700; letter-spacing: 0.08em; }
+  .brand .sub { font-size: 12px; color: var(--ink-soft); margin-top: 3px; letter-spacing: 0.02em; }
+  .rail-label { font-size: 11px; letter-spacing: 0.1em; color: var(--ink-faint); text-transform: uppercase; font-weight: 600; padding: 14px 20px 6px; }
+  nav.rail { padding: 2px 14px 14px; border-bottom: 1px solid var(--hairline); }
+  button.dyn { position: relative; display: flex; align-items: baseline; gap: 12px; width: 100%; background: none; border: none;
+    cursor: pointer; font-family: inherit; text-align: left; padding: 8px 10px 8px 8px; border-radius: 8px; color: var(--ink-soft);
+    transition: background 0.15s ease, color 0.15s ease; }
+  button.dyn:hover { background: var(--seal-soft); }
+  button.dyn:focus-visible { outline: 2px solid var(--jade); outline-offset: -2px; }
+  button.dyn .node { position: relative; flex-shrink: 0; width: 12px; display: flex; justify-content: center; align-self: stretch; padding-top: 7px; }
+  button.dyn .node::before { content: ""; position: absolute; top: 0; bottom: -16px; width: 2px; background: var(--gold); opacity: 0.45; }
+  button.dyn:first-child .node::before { top: 7px; }
+  button.dyn:last-child .node::before { bottom: 50%; }
+  button.dyn .node .dot { position: relative; z-index: 1; width: 9px; height: 9px; border-radius: 50%; background: var(--paper-panel); box-shadow: 0 0 0 2px var(--ink-faint); }
+  button.dyn .name { font-family:"STKaiti","KaiTi","Kaiti SC","Noto Serif SC",serif; font-size: 19px; font-weight: 700; }
+  button.dyn .yr { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
+  button.dyn.active { background: var(--seal-soft); color: var(--ink); }
+  button.dyn.active .name { color: var(--seal); }
+  button.dyn.active .node .dot { background: var(--seal); box-shadow: 0 0 0 3px var(--seal-soft), 0 0 0 1px var(--seal); }
+  button.dyn.active .yr { color: var(--ink-soft); }
+  .info { padding: 16px 20px; }
+  .info h2 { font-family:"STKaiti","KaiTi","Kaiti SC","Noto Serif SC",serif; font-size: 26px; margin: 0; }
+  .info .years { font-size: 12.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; margin: 2px 0 10px; }
+  .info .count { display: inline-block; font-size: 11px; color: var(--jade); background: var(--jade-soft); border-radius: 20px; padding: 2px 10px; margin-bottom: 12px; }
+  .info .summary { font-size: 12.5px; line-height: 1.75; margin: 0; color: var(--ink); }
+  .block { padding: 14px 20px; border-top: 1px dashed var(--hairline); }
+  .block h3 { font-size: 11px; letter-spacing: 0.08em; color: var(--ink-faint); text-transform: uppercase; margin: 0 0 10px; font-weight: 600; }
+  .legend-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; margin-bottom: 9px; }
+  .legend-row:last-child { margin-bottom: 0; }
+  .legend-swatch { flex-shrink: 0; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; gap: 10px; margin-bottom: 11px; }
+  .toggle-row:last-child { margin-bottom: 0; }
+  .switch { position: relative; width: 34px; height: 19px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; position: absolute; z-index: 2; }
+  .switch .track { position: absolute; inset: 0; background: var(--hairline); border-radius: 10px; transition: background 0.15s ease; }
+  .switch .thumb { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--paper-panel); box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform 0.15s ease; }
+  .switch input:checked ~ .track { background: var(--jade); }
+  .switch input:checked ~ .thumb { transform: translateX(15px); }
+  .switch input:focus-visible ~ .track { outline: 2px solid var(--jade); outline-offset: 2px; }
+  .city-detail { padding: 14px 20px; border-top: 1px dashed var(--hairline); font-size: 12.5px; line-height: 1.65; }
+  .city-detail .name { font-family:"STKaiti","KaiTi","Kaiti SC",serif; font-size: 17px; color: var(--seal); margin-bottom: 3px; }
+  .city-detail .placeholder { color: var(--ink-faint); }
+  .foot { margin-top: auto; padding: 14px 20px 18px; border-top: 1px solid var(--hairline); font-size: 10.5px; line-height: 1.6; color: var(--ink-faint); }
+
+  /* ---------- Map ---------- */
+  .map-wrap { position: relative; flex: 1; min-width: 0; height: 100%; background: var(--map-sea); overflow: hidden; }
+  svg#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  svg#map.dragging { cursor: grabbing; }
+  .sat-image { image-rendering: auto; }
+  .dim-overlay { fill: var(--map-dim); }
+  .province-casing { fill: none; stroke: rgba(0,0,0,0.55); stroke-width: 2.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .province-line { fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 0.9; vector-effect: non-scaling-stroke; stroke-dasharray: 3.5 2.5; stroke-linejoin: round; }
+  .river-line { fill: none; stroke: var(--river); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+  .china-casing { fill: none; stroke: rgba(0,0,0,0.4); stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .china-outline { fill: none; stroke: #ffe6a8; stroke-width: 1.3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+
+  /* ---------- City label overlay (HTML — constant on-screen size) ---------- */
+  .label-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 3; }
+  .marker { position: absolute; top: 0; left: 0; will-change: transform; }
+  .mk-dot { position: absolute; top: 0; left: 0; border-radius: 50%; pointer-events: auto; cursor: pointer;
+    background: #37c6d9; border: 1px solid rgba(10,14,14,0.55); width: 6px; height: 6px; transform: translate(-50%, -50%); }
+  .marker.tier-secondary .mk-dot { width: 9px; height: 9px; background: #ffce54; border-color: rgba(10,14,14,0.6); }
+  .marker.tier-capital .mk-dot { width: 11px; height: 11px; background: #ff4d3d; border: 1.5px solid #fff;
+    box-shadow: 0 0 0 3px rgba(255,77,61,0.35); }
+  .mk-dot:hover { filter: brightness(1.2); }
+
+  .mk-label { position: absolute; white-space: nowrap; pointer-events: none; user-select: none;
+    font-size: 11px; line-height: 1; font-weight: 500; color: #f2f0e8;
+    text-shadow: 0 0 2px rgba(10,14,14,0.95), 0 0 2px rgba(10,14,14,0.95), 0 1px 2px rgba(10,14,14,0.9); }
+  .marker.tier-secondary .mk-label { font-size: 12.5px; font-weight: 700; color: #ffffff; }
+  .marker.tier-capital .mk-label { font-size: 15px; font-weight: 700; color: #ffd24a; }
+  .marker.selected .mk-label { color: #ffd24a; }
+  .marker.selected .mk-dot { filter: brightness(1.3); }
+  /* label anchor positions relative to the dot */
+  .mk-label.p-start  { left: 8px;  top: 0;    transform: translate(0, -50%); }
+  .mk-label.p-end    { left: -8px; top: 0;    transform: translate(-100%, -50%); }
+  .mk-label.p-top    { left: 0;    top: -8px; transform: translate(-50%, -100%); }
+  .mk-label.p-bottom { left: 0;    top: 9px;  transform: translate(-50%, 0); }
+  .label-layer.labels-off .mk-label { display: none; }
+
+  .map-controls { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
+  .map-controls button { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--hairline); background: var(--paper-panel); color: var(--ink); font-size: 15px; cursor: pointer; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; line-height: 1; }
+  .map-controls button:hover { background: var(--seal-soft); }
+  .map-controls button:focus-visible { outline: 2px solid var(--jade); outline-offset: 2px; }
+  .compass { position: absolute; left: 16px; bottom: 16px; font-family:"STKaiti","KaiTi","Kaiti SC",serif; font-size: 11px; color: #f0ece0; text-shadow: 0 1px 3px rgba(0,0,0,0.7); text-align: center; line-height: 1.2; z-index: 4; user-select: none; }
+  .compass .arrow { font-size: 18px; display: block; }
+  .scale-hint { position: absolute; right: 14px; bottom: 14px; font-size: 10.5px; color: #f0ece0; text-shadow: 0 1px 3px rgba(0,0,0,0.7); z-index: 4; user-select: none; opacity: 0.85; }
+  .tooltip { position: absolute; pointer-events: none; background: var(--paper-panel); border: 1px solid var(--hairline); box-shadow: var(--shadow); border-radius: 8px; padding: 8px 11px; font-size: 12.5px; line-height: 1.5; max-width: 230px; z-index: 8; opacity: 0; transition: opacity 0.1s ease; }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .name { font-family:"STKaiti","KaiTi","Kaiti SC",serif; font-size: 15px; color: var(--seal); margin-bottom: 2px; }
+  .tooltip .note { color: var(--ink-soft); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 820px) {
+    .app { flex-direction: column; }
+    aside.sidebar { width: 100%; height: auto; max-height: 46vh; border-right: none; border-bottom: 1px solid var(--hairline); }
+    nav.rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    button.dyn { flex-direction: column; align-items: flex-start; gap: 2px; }
+    button.dyn .node { display: none; }
+    button.dyn .yr { margin-left: 0; }
+    .foot { margin-top: 0; }
+    .map-wrap { min-height: 54vh; }
+  }
+</style>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1 class="display">华夏舆图</h1>
+      <div class="sub">秦汉至明清 · 九朝地名互动地图</div>
+    </div>
+
+    <div class="rail-label">选择朝代</div>
+    <nav class="rail" id="rail" aria-label="朝代选择"></nav>
+
+    <div class="info">
+      <h2 class="display" id="dynName">—</h2>
+      <div class="years" id="dynYears">—</div>
+      <span class="count" id="dynCount"></span>
+      <p class="summary" id="dynSummary">—</p>
+    </div>
+
+    <div class="city-detail" id="cityDetail">
+      <span class="placeholder">点击地图上的城市标记，查看该地在此朝代的沿革</span>
+    </div>
+
+    <div class="block">
+      <h3>图例</h3>
+      <div class="legend-row">
+        <svg class="legend-swatch" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5" fill="none" stroke="#ff4d3d" stroke-width="1" opacity="0.85"/><circle cx="9" cy="9" r="3.2" fill="#ff4d3d" stroke="#fff" stroke-width="0.7"/></svg>
+        <span>都城</span>
+      </div>
+      <div class="legend-row">
+        <svg class="legend-swatch" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="3.6" fill="#ffce54" stroke="rgba(0,0,0,0.5)" stroke-width="0.6"/></svg>
+        <span>陪都 / 别都 / 中都</span>
+      </div>
+      <div class="legend-row">
+        <svg class="legend-swatch" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="2.6" fill="#37c6d9" stroke="rgba(0,0,0,0.5)" stroke-width="0.5"/></svg>
+        <span>州郡府县等重要城市</span>
+      </div>
+    </div>
+
+    <div class="block">
+      <h3>图层</h3>
+      <div class="toggle-row"><span>卫星地形底图</span><label class="switch"><input type="checkbox" id="toggleSat" checked /><span class="track"></span><span class="thumb"></span></label></div>
+      <div class="toggle-row"><span>周边区域压暗</span><label class="switch"><input type="checkbox" id="toggleDim" checked /><span class="track"></span><span class="thumb"></span></label></div>
+      <div class="toggle-row"><span>江河示意</span><label class="switch"><input type="checkbox" id="toggleRivers" /><span class="track"></span><span class="thumb"></span></label></div>
+      <div class="toggle-row"><span>现代省界参考</span><label class="switch"><input type="checkbox" id="toggleProvinces" /><span class="track"></span><span class="thumb"></span></label></div>
+      <div class="toggle-row"><span>显示地名文字</span><label class="switch"><input type="checkbox" id="toggleLabels" checked /><span class="track"></span><span class="thumb"></span></label></div>
+    </div>
+
+    <div class="foot">底图为 NASA Blue Marble 卫星地形影像（公有领域）。地名与中国轮廓仅为历史地理教学示意，古地名以约略对应之今地标注，边界未随各朝逐年精绘，不代表现代国界或任何主权主张。</div>
+  </aside>
+
+  <div class="map-wrap" id="mapWrap">
+    <svg id="map" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="label-layer" id="labelLayer"></div>
+    <div class="map-controls">
+      <button id="zoomIn" title="放大" aria-label="放大">+</button>
+      <button id="zoomOut" title="缩小" aria-label="缩小">−</button>
+      <button id="zoomReset" title="重置视图" aria-label="重置视图">⤾</button>
+    </div>
+    <div class="compass"><span class="arrow">↑</span>北</div>
+    <div class="scale-hint">滚轮 / 双指缩放，拖动平移</div>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+</div>
+
+<script>
+const MAP_DATA = %%MAP_DATA%%;
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("map");
+const railEl = document.getElementById("rail");
+const tooltipEl = document.getElementById("tooltip");
+const labelLayer = document.getElementById("labelLayer");
+const mapWrap = document.getElementById("mapWrap");
+
+let view = { x: 0, y: 0, w: 0, h: 0 };
+let baseView = { x: 0, y: 0, w: 0, h: 0 };
+let markerEls = [];      // { c, node, dot, cx, cy }
+let selectedMarker = null;
+let projQueued = false;
+
+function setViewBox() {
+  svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+  scheduleProject();
+}
+function initView() {
+  const [x, y, w, h] = MAP_DATA.viewBox;
+  baseView = { x, y, w, h }; view = { x, y, w, h }; setViewBox();
+}
+function el(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+// ---------- Base SVG layers (these zoom together with the map) ----------
+let gSat, gDim, gProvinces, gRivers, gOutline;
+function buildStaticLayers() {
+  const s = MAP_DATA.satellite;
+  gSat = el("g", {});
+  const img = el("image", { class: "sat-image", x: s.x, y: s.y, width: s.w, height: s.h, preserveAspectRatio: "none" });
+  img.setAttributeNS("http://www.w3.org/1999/xlink", "href", s.uri);
+  img.setAttribute("href", s.uri);
+  gSat.appendChild(img); svg.appendChild(gSat);
+
+  gDim = el("g", {});
+  const rectD = `M${s.x},${s.y}H${s.x + s.w}V${s.y + s.h}H${s.x}Z`;
+  gDim.appendChild(el("path", { class: "dim-overlay", d: rectD + MAP_DATA.chinaPath, "fill-rule": "evenodd" }));
+  svg.appendChild(gDim);
+
+  gProvinces = el("g", {}); gProvinces.style.display = "none";
+  MAP_DATA.provinces.forEach(pr => gProvinces.appendChild(el("path", { d: pr.d, class: "province-casing", "fill-rule": "evenodd" })));
+  MAP_DATA.provinces.forEach(pr => gProvinces.appendChild(el("path", { d: pr.d, class: "province-line", "fill-rule": "evenodd" })));
+  svg.appendChild(gProvinces);
+
+  gRivers = el("g", {}); gRivers.style.display = "none";
+  MAP_DATA.rivers.forEach(r => gRivers.appendChild(el("polyline", { points: r.points.map(pt => pt.join(",")).join(" "), class: "river-line" })));
+  svg.appendChild(gRivers);
+
+  gOutline = el("g", {});
+  gOutline.appendChild(el("path", { d: MAP_DATA.chinaPath, class: "china-casing", "fill-rule": "evenodd" }));
+  gOutline.appendChild(el("path", { d: MAP_DATA.chinaPath, class: "china-outline", "fill-rule": "evenodd" }));
+  svg.appendChild(gOutline);
+}
+
+// ---------- Label placement (computed once per dynasty, in screen px at base zoom) ----------
+const POSITIONS = [
+  { cls: "p-start",  ox: 8,  oy: 0,  ax: "start" },
+  { cls: "p-end",    ox: -8, oy: 0,  ax: "end" },
+  { cls: "p-top",    ox: 0,  oy: -8, ax: "top" },
+  { cls: "p-bottom", ox: 0,  oy: 9,  ax: "bottom" },
+];
+function tierFontPx(t) { return t === "capital" ? 15 : t === "secondary" ? 12.5 : 11; }
+function tierDotPx(t)  { return t === "capital" ? 11 : t === "secondary" ? 9 : 6; }
+function tierRank(t)   { return t === "capital" ? 0 : t === "secondary" ? 1 : 2; }
+
+function labelRect(bx, by, pos, fontPx, len) {
+  const w = len * fontPx * 1.02, h = fontPx * 1.12;
+  let left, top;
+  if (pos.ax === "start")  { left = bx + pos.ox;        top = by + pos.oy - h / 2; }
+  else if (pos.ax === "end")    { left = bx + pos.ox - w;    top = by + pos.oy - h / 2; }
+  else if (pos.ax === "top")    { left = bx - w / 2;         top = by + pos.oy - h; }
+  else                          { left = bx - w / 2;         top = by + pos.oy; }
+  return { left, right: left + w, top, bottom: top + h };
+}
+function overlaps(a, b, pad) { return !(a.right + pad < b.left || a.left - pad > b.right || a.bottom + pad < b.top || a.top - pad > b.bottom); }
+
+function computePlacement(cities) {
+  // scale from user-units to base-zoom screen px (preserveAspectRatio=meet)
+  const wr = mapWrap.getBoundingClientRect();
+  const scale = Math.min(wr.width / baseView.w, wr.height / baseView.h) || 1;
+  const placed = [];
+  const dotRects = cities.map(c => {
+    const bx = (c.x - baseView.x) * scale, by = (c.y - baseView.y) * scale, r = tierDotPx(c.tier) / 2 + 1;
+    return { left: bx - r, right: bx + r, top: by - r, bottom: by + r };
+  });
+  const order = [...cities].map((c, i) => ({ c, i })).sort((a, b) => tierRank(a.c.tier) - tierRank(b.c.tier));
+  const result = new Map();
+  for (const { c } of order) {
+    const bx = (c.x - baseView.x) * scale, by = (c.y - baseView.y) * scale;
+    const fontPx = tierFontPx(c.tier), len = c.name.length;
+    let chosen = null;
+    for (const pos of POSITIONS) {
+      const rect = labelRect(bx, by, pos, fontPx, len);
+      if (!placed.some(p => overlaps(rect, p, 1)) && !dotRects.some(d => overlaps(rect, d, 0.5))) { chosen = { pos, rect }; break; }
+    }
+    if (!chosen) { const pos = POSITIONS[0]; chosen = { pos, rect: labelRect(bx, by, pos, fontPx, len) }; }
+    placed.push(chosen.rect);
+    result.set(c, chosen.pos.cls);
+  }
+  return result;
+}
+
+// ---------- Render markers (HTML) ----------
+function renderCities(dynKey) {
+  labelLayer.innerHTML = ""; markerEls = []; selectedMarker = null;
+  const dyn = MAP_DATA.dynasties[dynKey];
+  const placement = computePlacement(dyn.cities);
+  dyn.cities.forEach(c => {
+    const node = document.createElement("div");
+    node.className = `marker tier-${c.tier}`;
+    const dot = document.createElement("span");
+    dot.className = "mk-dot";
+    const label = document.createElement("span");
+    label.className = "mk-label " + placement.get(c);
+    label.textContent = c.name;
+    node.appendChild(dot); node.appendChild(label);
+    dot.addEventListener("pointerenter", (ev) => showTooltip(ev, c));
+    dot.addEventListener("pointermove", moveTooltip);
+    dot.addEventListener("pointerleave", hideTooltip);
+    dot.addEventListener("click", (ev) => { ev.stopPropagation(); selectCity(c, node); });
+    labelLayer.appendChild(node);
+    markerEls.push({ c, node, dot, cx: c.x, cy: c.y });
+  });
+  projectMarkers();
+}
+
+// ---------- Project markers to screen every frame (keeps label size constant) ----------
+function scheduleProject() {
+  if (projQueued) return;
+  projQueued = true;
+  requestAnimationFrame(() => { projQueued = false; projectMarkers(); });
+}
+function projectMarkers() {
+  if (!markerEls.length) return;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) { scheduleProject(); return; }   // layout not ready yet — retry next frame
+  const wr = mapWrap.getBoundingClientRect();
+  const a = ctm.a, b = ctm.b, cc = ctm.c, d = ctm.d, e = ctm.e - wr.left, f = ctm.f - wr.top;
+  const W = wr.width, H = wr.height;
+  for (const m of markerEls) {
+    const sx = a * m.cx + cc * m.cy + e;
+    const sy = b * m.cx + d * m.cy + f;
+    if (sx < -40 || sy < -40 || sx > W + 40 || sy > H + 40) {
+      if (m.node.style.display !== "none") m.node.style.display = "none";
+    } else {
+      if (m.node.style.display === "none") m.node.style.display = "";
+      m.node.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+    }
+  }
+}
+
+function selectCity(c, node) {
+  if (selectedMarker) selectedMarker.classList.remove("selected");
+  node.classList.add("selected"); selectedMarker = node;
+  document.getElementById("cityDetail").innerHTML = `<div class="name">${c.full}</div><div>${c.note}</div>`;
+}
+function showTooltip(ev, c) {
+  tooltipEl.innerHTML = `<div class="name">${c.full}</div><div class="note">${c.note}</div>`;
+  tooltipEl.classList.add("visible"); moveTooltip(ev);
+}
+function moveTooltip(ev) {
+  const wr = mapWrap.getBoundingClientRect();
+  let left = ev.clientX - wr.left + 14, top = ev.clientY - wr.top + 14;
+  if (left + 240 > wr.width) left = ev.clientX - wr.left - 240;
+  tooltipEl.style.left = left + "px"; tooltipEl.style.top = top + "px";
+}
+function hideTooltip() { tooltipEl.classList.remove("visible"); }
+
+function buildRail() {
+  MAP_DATA.dynastyOrder.forEach(key => {
+    const dyn = MAP_DATA.dynasties[key];
+    const btn = document.createElement("button");
+    btn.className = "dyn"; btn.dataset.key = key;
+    btn.innerHTML = `<span class="node"><span class="dot"></span></span><span class="name">${dyn.label}</span><span class="yr">${dyn.years}</span>`;
+    btn.addEventListener("click", () => selectDynasty(key));
+    railEl.appendChild(btn);
+  });
+}
+function selectDynasty(key) {
+  const dyn = MAP_DATA.dynasties[key];
+  document.querySelectorAll(".dyn").forEach(b => b.classList.toggle("active", b.dataset.key === key));
+  document.getElementById("dynName").textContent = dyn.label;
+  document.getElementById("dynYears").textContent = dyn.years;
+  document.getElementById("dynCount").textContent = `本图标注 ${dyn.cities.length} 处地名`;
+  document.getElementById("dynSummary").textContent = dyn.summary;
+  document.getElementById("cityDetail").innerHTML = '<span class="placeholder">点击地图上的城市标记，查看该地在此朝代的沿革</span>';
+  renderCities(key);
+}
+
+document.getElementById("toggleSat").addEventListener("change", (e) => gSat.style.display = e.target.checked ? "" : "none");
+document.getElementById("toggleDim").addEventListener("change", (e) => gDim.style.display = e.target.checked ? "" : "none");
+document.getElementById("toggleRivers").addEventListener("change", (e) => gRivers.style.display = e.target.checked ? "" : "none");
+document.getElementById("toggleProvinces").addEventListener("change", (e) => gProvinces.style.display = e.target.checked ? "" : "none");
+document.getElementById("toggleLabels").addEventListener("change", (e) => labelLayer.classList.toggle("labels-off", !e.target.checked));
+
+// ---------- Zoom & pan ----------
+function zoomAt(factor, clientX, clientY) {
+  const rect = svg.getBoundingClientRect();
+  const px = (clientX - rect.left) / rect.width, py = (clientY - rect.top) / rect.height;
+  const newW = Math.max(baseView.w * 0.03, Math.min(baseView.w * 1.6, view.w * factor));
+  const newH = newW * (view.h / view.w);
+  const fx = view.x + px * view.w, fy = view.y + py * view.h;
+  view = { x: fx - px * newW, y: fy - py * newH, w: newW, h: newH };
+  setViewBox();
+}
+mapWrap.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(e.deltaY > 0 ? 1.12 : 1/1.12, e.clientX, e.clientY); }, { passive: false });
+
+let dragging = false, lastX = 0, lastY = 0;
+const activePointers = new Map();
+let pinchStartDist = null, pinchStartView = null;
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+mapWrap.addEventListener("pointerdown", (e) => {
+  const onDot = e.target.classList && e.target.classList.contains("mk-dot");
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size === 1) {
+    if (onDot) { dragging = false; return; }   // let the dot handle click / tooltip
+    mapWrap.setPointerCapture(e.pointerId);
+    dragging = true; lastX = e.clientX; lastY = e.clientY; svg.classList.add("dragging");
+  } else if (activePointers.size === 2) {
+    dragging = false; const pts = [...activePointers.values()]; pinchStartDist = dist(pts[0], pts[1]); pinchStartView = { ...view };
+  }
+});
+mapWrap.addEventListener("pointermove", (e) => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size === 2) {
+    const pts = [...activePointers.values()], dd = dist(pts[0], pts[1]);
+    if (pinchStartDist) { const cx = (pts[0].x + pts[1].x)/2, cy = (pts[0].y + pts[1].y)/2; view = { ...pinchStartView }; zoomAt(pinchStartDist / dd, cx, cy); }
+    return;
+  }
+  if (dragging) {
+    const rect = svg.getBoundingClientRect();
+    view.x -= (e.clientX - lastX) * (view.w / rect.width);
+    view.y -= (e.clientY - lastY) * (view.h / rect.height);
+    lastX = e.clientX; lastY = e.clientY; setViewBox();
+  }
+});
+function endPointer(e) {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) pinchStartDist = null;
+  if (activePointers.size === 0) { dragging = false; svg.classList.remove("dragging"); }
+}
+mapWrap.addEventListener("pointerup", endPointer);
+mapWrap.addEventListener("pointercancel", endPointer);
+mapWrap.addEventListener("dblclick", (e) => zoomAt(1/1.6, e.clientX, e.clientY));
+document.getElementById("zoomIn").addEventListener("click", () => { const r = svg.getBoundingClientRect(); zoomAt(1/1.4, r.left + r.width/2, r.top + r.height/2); });
+document.getElementById("zoomOut").addEventListener("click", () => { const r = svg.getBoundingClientRect(); zoomAt(1.4, r.left + r.width/2, r.top + r.height/2); });
+document.getElementById("zoomReset").addEventListener("click", () => { view = { ...baseView }; setViewBox(); });
+
+window.addEventListener("resize", scheduleProject);
+
+// ---------- Init ----------
+initView();
+buildStaticLayers();
+buildRail();
+selectDynasty("tang");
+// make sure labels get positioned once layout/size is settled
+window.addEventListener("load", scheduleProject);
+requestAnimationFrame(scheduleProject);
+</script>
