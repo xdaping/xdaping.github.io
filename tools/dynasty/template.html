@@ -115,6 +115,7 @@
   .marker { position: absolute; top: 0; left: 0; will-change: transform; }
   .mk-dot { position: absolute; top: 0; left: 0; border-radius: 50%; pointer-events: auto; cursor: pointer;
     background: #37c6d9; border: 1px solid rgba(10,14,14,0.55); width: 6px; height: 6px; transform: translate(-50%, -50%); }
+  .marker.tier-town .mk-dot { width: 4.5px; height: 4.5px; background: #9fd8c8; border-color: rgba(10,14,14,0.5); }
   .marker.tier-secondary .mk-dot { width: 9px; height: 9px; background: #ffce54; border-color: rgba(10,14,14,0.6); }
   .marker.tier-capital .mk-dot { width: 11px; height: 11px; background: #ff4d3d; border: 1.5px solid #fff;
     box-shadow: 0 0 0 3px rgba(255,77,61,0.35); }
@@ -123,8 +124,10 @@
   .mk-label { position: absolute; white-space: nowrap; pointer-events: none; user-select: none;
     font-size: 11px; line-height: 1; font-weight: 500; color: #f2f0e8;
     text-shadow: 0 0 2px rgba(10,14,14,0.95), 0 0 2px rgba(10,14,14,0.95), 0 1px 2px rgba(10,14,14,0.9); }
+  .marker.tier-town .mk-label { font-size: 10px; font-weight: 400; color: #dbe6e0; }
   .marker.tier-secondary .mk-label { font-size: 12.5px; font-weight: 700; color: #ffffff; }
   .marker.tier-capital .mk-label { font-size: 15px; font-weight: 700; color: #ffd24a; }
+  .mk-label.mk-hide { display: none; }
   .marker.selected .mk-label { color: #ffd24a; }
   .marker.selected .mk-dot { filter: brightness(1.3); }
   /* label anchor positions relative to the dot */
@@ -277,16 +280,16 @@ function buildStaticLayers() {
   svg.appendChild(gOutline);
 }
 
-// ---------- Label placement (computed once per dynasty, in screen px at base zoom) ----------
+// ---------- Label placement (recomputed on每次变换，按当前屏幕像素排布) ----------
 const POSITIONS = [
   { cls: "p-start",  ox: 8,  oy: 0,  ax: "start" },
   { cls: "p-end",    ox: -8, oy: 0,  ax: "end" },
   { cls: "p-top",    ox: 0,  oy: -8, ax: "top" },
   { cls: "p-bottom", ox: 0,  oy: 9,  ax: "bottom" },
 ];
-function tierFontPx(t) { return t === "capital" ? 15 : t === "secondary" ? 12.5 : 11; }
-function tierDotPx(t)  { return t === "capital" ? 11 : t === "secondary" ? 9 : 6; }
-function tierRank(t)   { return t === "capital" ? 0 : t === "secondary" ? 1 : 2; }
+function tierFontPx(t) { return t === "capital" ? 15 : t === "secondary" ? 12.5 : t === "town" ? 10 : 11; }
+function tierDotPx(t)  { return t === "capital" ? 11 : t === "secondary" ? 9 : t === "town" ? 4.5 : 6; }
+function tierRank(t)   { return t === "capital" ? 0 : t === "secondary" ? 1 : t === "city" ? 2 : 3; }
 
 function labelRect(bx, by, pos, fontPx, len) {
   const w = len * fontPx * 1.02, h = fontPx * 1.12;
@@ -297,46 +300,61 @@ function labelRect(bx, by, pos, fontPx, len) {
   else                          { left = bx - w / 2;         top = by + pos.oy; }
   return { left, right: left + w, top, bottom: top + h };
 }
-function overlaps(a, b, pad) { return !(a.right + pad < b.left || a.left - pad > b.right || a.bottom + pad < b.top || a.top - pad > b.bottom); }
 
-function computePlacement(cities) {
-  // scale from user-units to base-zoom screen px (preserveAspectRatio=meet)
-  const wr = mapWrap.getBoundingClientRect();
-  const scale = Math.min(wr.width / baseView.w, wr.height / baseView.h) || 1;
-  const placed = [];
-  const dotRects = cities.map(c => {
-    const bx = (c.x - baseView.x) * scale, by = (c.y - baseView.y) * scale, r = tierDotPx(c.tier) / 2 + 1;
-    return { left: bx - r, right: bx + r, top: by - r, bottom: by + r };
-  });
-  const order = [...cities].map((c, i) => ({ c, i })).sort((a, b) => tierRank(a.c.tier) - tierRank(b.c.tier));
-  const result = new Map();
-  for (const { c } of order) {
-    const bx = (c.x - baseView.x) * scale, by = (c.y - baseView.y) * scale;
-    const fontPx = tierFontPx(c.tier), len = c.name.length;
+// 粗网格空间索引：地名点多达两百余处时，避免每帧做 O(n²) 的矩形相交测试
+const CELL = 32;
+function gridAdd(grid, r) {
+  const x0 = Math.floor(r.left / CELL), x1 = Math.floor(r.right / CELL);
+  const y0 = Math.floor(r.top / CELL),  y1 = Math.floor(r.bottom / CELL);
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+    const k = x + "," + y; let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(r);
+  }
+}
+function gridHits(grid, r, pad) {
+  const x0 = Math.floor((r.left - pad) / CELL), x1 = Math.floor((r.right + pad) / CELL);
+  const y0 = Math.floor((r.top - pad) / CELL),  y1 = Math.floor((r.bottom + pad) / CELL);
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+    const a = grid.get(x + "," + y); if (!a) continue;
+    for (const o of a) {
+      if (!(r.right + pad < o.left || r.left - pad > o.right || r.bottom + pad < o.top || r.top - pad > o.bottom)) return true;
+    }
+  }
+  return false;
+}
+function setLabelCls(m, cls) {
+  const next = cls ? "mk-label " + cls : "mk-label mk-hide";
+  if (m.labelCls !== next) { m.labelCls = next; m.label.className = next; }
+}
+// 贪心排布：按 都城 > 陪都 > 州府 > 关隘小邑 的优先级依次占位，放不下的隐去文字（点仍可点）
+function placeLabels(visible) {
+  // 只避让「已经排定的」更高优先级的点与文字：都城先占位，低级地名再见缝插针，
+  // 否则密集区里的都城反被四周小点挤掉，最该显示的名字先消失。
+  const dots = new Map(), labels = new Map();
+  for (const v of visible) {
+    const c = v.m.c, fontPx = tierFontPx(c.tier), len = c.name.length;
     let chosen = null;
     for (const pos of POSITIONS) {
-      const rect = labelRect(bx, by, pos, fontPx, len);
-      if (!placed.some(p => overlaps(rect, p, 1)) && !dotRects.some(d => overlaps(rect, d, 0.5))) { chosen = { pos, rect }; break; }
+      const rect = labelRect(v.sx, v.sy, pos, fontPx, len);
+      if (!gridHits(labels, rect, 1) && !gridHits(dots, rect, 0.5)) { chosen = { pos, rect }; break; }
     }
-    if (!chosen) { const pos = POSITIONS[0]; chosen = { pos, rect: labelRect(bx, by, pos, fontPx, len) }; }
-    placed.push(chosen.rect);
-    result.set(c, chosen.pos.cls);
+    if (chosen) { gridAdd(labels, chosen.rect); setLabelCls(v.m, chosen.pos.cls); }
+    else setLabelCls(v.m, null);
+    const r = tierDotPx(c.tier) / 2 + 1;
+    gridAdd(dots, { left: v.sx - r, right: v.sx + r, top: v.sy - r, bottom: v.sy + r });
   }
-  return result;
 }
 
 // ---------- Render markers (HTML) ----------
 function renderCities(dynKey) {
   labelLayer.innerHTML = ""; markerEls = []; selectedMarker = null;
   const dyn = MAP_DATA.dynasties[dynKey];
-  const placement = computePlacement(dyn.cities);
   dyn.cities.forEach(c => {
     const node = document.createElement("div");
     node.className = `marker tier-${c.tier}`;
     const dot = document.createElement("span");
     dot.className = "mk-dot";
     const label = document.createElement("span");
-    label.className = "mk-label " + placement.get(c);
+    label.className = "mk-label mk-hide";
     label.textContent = c.name;
     node.appendChild(dot); node.appendChild(label);
     dot.addEventListener("pointerenter", (ev) => showTooltip(ev, c));
@@ -344,7 +362,7 @@ function renderCities(dynKey) {
     dot.addEventListener("pointerleave", hideTooltip);
     dot.addEventListener("click", (ev) => { ev.stopPropagation(); selectCity(c, node); });
     labelLayer.appendChild(node);
-    markerEls.push({ c, node, dot, cx: c.x, cy: c.y });
+    markerEls.push({ c, node, dot, label, labelCls: "mk-label mk-hide", cx: c.x, cy: c.y });
   });
   projectMarkers();
 }
@@ -362,6 +380,7 @@ function projectMarkers() {
   const wr = mapWrap.getBoundingClientRect();
   const a = ctm.a, b = ctm.b, cc = ctm.c, d = ctm.d, e = ctm.e - wr.left, f = ctm.f - wr.top;
   const W = wr.width, H = wr.height;
+  const visible = [];
   for (const m of markerEls) {
     const sx = a * m.cx + cc * m.cy + e;
     const sy = b * m.cx + d * m.cy + f;
@@ -370,8 +389,11 @@ function projectMarkers() {
     } else {
       if (m.node.style.display === "none") m.node.style.display = "";
       m.node.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+      visible.push({ m, sx, sy });
     }
   }
+  visible.sort((p, q) => tierRank(p.m.c.tier) - tierRank(q.m.c.tier));
+  placeLabels(visible);
 }
 
 function selectCity(c, node) {
@@ -406,7 +428,7 @@ function selectDynasty(key) {
   document.querySelectorAll(".dyn").forEach(b => b.classList.toggle("active", b.dataset.key === key));
   document.getElementById("dynName").textContent = dyn.label;
   document.getElementById("dynYears").textContent = dyn.years;
-  document.getElementById("dynCount").textContent = `本图标注 ${dyn.cities.length} 处地名`;
+  document.getElementById("dynCount").textContent = `本图标注 ${dyn.cities.length} 处地名（放大可显示更多地名）`;
   document.getElementById("dynSummary").textContent = dyn.summary;
   document.getElementById("cityDetail").innerHTML = '<span class="placeholder">点击地图上的城市标记，查看该地在此朝代的沿革</span>';
   renderCities(key);
