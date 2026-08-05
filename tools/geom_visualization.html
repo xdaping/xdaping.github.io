@@ -82,6 +82,12 @@
     padding:7px 8px; border:1px solid #cfd4da; border-radius:5px; background:#fff; color:#333;
   }
   #draw-wkt::placeholder { color:#a8adb5; font-family:-apple-system,"PingFang SC",sans-serif; }
+  /* 可拖动的顶点手柄 */
+  .vtx-handle {
+    background:#fff; border:2px solid #ff5a3c; border-radius:50%;
+    box-sizing:border-box; cursor:move; box-shadow:0 1px 3px rgba(0,0,0,.3);
+  }
+  .vtx-handle:hover { background:#ff5a3c; }
 </style>
 </head>
 <body>
@@ -92,7 +98,7 @@
     <div class="box">
       <div class="hd"><strong>绘制 Polygon</strong></div>
       <div class="box-main draw-main">
-        <input id="draw-wkt" readonly placeholder="点击地图右上角 ⬠ 开始绘制：左键取点，右键撤销，双击结束">
+        <input id="draw-wkt" readonly placeholder="点击地图右上角 ⬠ 开始绘制：左键取点，右键撤销，双击结束；只取 2 点则按对角线生成矩形；结束后可拖动顶点修改">
         <button class="btn" id="draw-copy">复制</button>
         <button class="btn" id="draw-clear">清除</button>
       </div>
@@ -461,8 +467,9 @@ map.getContainer().addEventListener('contextmenu', ev=>{
 /* ============ 绘制 Polygon ============ */
 const drawLayer = L.layerGroup().addTo(map);
 const drawStyle = { color:'#ff5a3c', weight:2, fillColor:'#ff5a3c', fillOpacity:0.2 };
-let drawing=false, dPts=[], dLine=null, dPoly=null, drawBtn=null, dClickTimer=null;
+let drawing=false, dPts=[], dLine=null, dPoly=null, drawBtn=null, dClickTimer=null, dHandles=[];
 const wktEl = document.getElementById('draw-wkt');
+const handleIcon = L.divIcon({ className:'vtx-handle', iconSize:[12,12], iconAnchor:[6,6] });
 
 function drawWKT(){
   if(!dPts.length) return '';
@@ -472,30 +479,53 @@ function drawWKT(){
   return `POLYGON((${r.join(', ')}))`;
 }
 function updateWKT(){ wktEl.value = drawWKT(); }
+// 结束绘制后：把每个顶点换成可拖动的手柄，拖动即时更新面与 WKT
+function renderHandles(){
+  dHandles=[];
+  dPts.forEach((p,i)=>{
+    const m = L.marker(p, { draggable:true, icon:handleIcon, zIndexOffset:1000, title:'拖动可修改该顶点' })
+      .bindTooltip(String(i+1), { permanent:true, direction:'top', offset:[0,-8], className:'vtx-label vtx-poly' })
+      .addTo(drawLayer);
+    m.on('drag', ()=>{
+      const ll = m.getLatLng();
+      dPts[i] = L.latLng(ll.lat, normLon(ll.lng));
+      if(dPoly) dPoly.setLatLngs(dPts);
+      updateWKT();
+    });
+    dHandles.push(m);
+  });
+}
 function redrawTemp(){
-  drawLayer.clearLayers(); dLine=null; dPoly=null;
+  drawLayer.clearLayers(); dLine=null; dPoly=null; dHandles=[];
   dPts.forEach(p=>L.circleMarker(p,{radius:3,color:'#fff',weight:1.5,fillColor:'#ff5a3c',fillOpacity:1}).addTo(drawLayer));
   if(dPts.length>1) dLine = L.polyline(dPts,{color:'#ff5a3c',weight:2,dashArray:'5,5'}).addTo(drawLayer);
   updateWKT();
 }
 function setDrawActive(on){ if(drawBtn) drawBtn.classList.toggle('active', on); }
-function clearDraw(){ drawLayer.clearLayers(); dPts=[]; dLine=null; dPoly=null; wktEl.value=''; }
+function clearDraw(){ drawLayer.clearLayers(); dPts=[]; dLine=null; dPoly=null; dHandles=[]; wktEl.value=''; }
 function startDraw(){
   if(measuring) stopMeasure(true);
   clearDraw(); drawing=true; setDrawActive(true);
   map.getContainer().style.cursor='crosshair';
   map.doubleClickZoom.disable();
 }
+// 两点视为对角线，生成轴对齐矩形（西南 → 东南 → 东北 → 西北）
+function rectFromDiagonal(a, b){
+  const lon1=normLon(a.lng), lon2=normLon(b.lng);
+  const w=Math.min(lon1,lon2), e=Math.max(lon1,lon2);
+  const s=Math.min(a.lat,b.lat), n=Math.max(a.lat,b.lat);
+  if(w===e || s===n) return [a, b];   // 退化（同经度或同纬度），保持原样
+  return [L.latLng(s,w), L.latLng(s,e), L.latLng(n,e), L.latLng(n,w)];
+}
 function finishDraw(){
   drawing=false; setDrawActive(false);
   map.getContainer().style.cursor='';
   map.doubleClickZoom.enable();
+  if(dPts.length===2) dPts = rectFromDiagonal(dPts[0], dPts[1]);   // 只取两点 -> 矩形
   if(dPts.length>=3){
     drawLayer.clearLayers(); dLine=null;
     dPoly = L.polygon(dPts, drawStyle).addTo(drawLayer);
-    dPts.forEach((p,i)=>L.circleMarker(p,{radius:3,color:'#fff',weight:1.5,fillColor:'#ff5a3c',fillOpacity:1})
-      .bindTooltip(String(i+1),{permanent:true,direction:'top',offset:[0,-2],className:'vtx-label vtx-poly'})
-      .addTo(drawLayer));
+    renderHandles();
   }
   updateWKT();
 }
@@ -513,7 +543,7 @@ const DrawCtl = L.Control.extend({
   options:{ position:'topright' },
   onAdd:function(){
     const d = L.DomUtil.create('div','leaflet-bar draw-ctl');
-    d.innerHTML = `<a href="#" title="绘制多边形：左键取点，右键撤销，双击结束；再次点此清除">⬠</a>`;
+    d.innerHTML = `<a href="#" title="绘制多边形：左键取点，右键撤销，双击结束（只取 2 点则按对角线生成矩形）；再次点此清除">⬠</a>`;
     drawBtn = d.querySelector('a');
     L.DomEvent.disableClickPropagation(d);
     L.DomEvent.on(drawBtn,'click',ev=>{
