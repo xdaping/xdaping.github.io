@@ -98,7 +98,7 @@
     <div class="box">
       <div class="hd"><strong>绘制 Polygon</strong></div>
       <div class="box-main draw-main">
-        <input id="draw-wkt" readonly placeholder="点击地图右上角 ⬠ 开始绘制：左键取点，右键撤销，双击结束；只取 2 点则按对角线生成矩形；结束后可拖动顶点修改">
+        <input id="draw-wkt" readonly placeholder="点右上角 ⬠ 开始绘制：左键逐个取点，双击的位置也算最后一个点并结束，右键撤销；共 2 个点时按对角线生成矩形；结束后可拖动顶点修改">
         <button class="btn" id="draw-copy">复制</button>
         <button class="btn" id="draw-clear">清除</button>
       </div>
@@ -537,13 +537,23 @@ map.on('click', e=>{
   clearTimeout(dClickTimer);
   dClickTimer = setTimeout(()=>addDrawPoint(e.latlng), 220);  // 防止双击误加点
 });
-map.on('dblclick', e=>{ if(drawing){ clearTimeout(dClickTimer); finishDraw(); } });
+map.on('dblclick', e=>{
+  if(!drawing) return;
+  clearTimeout(dClickTimer);
+  // 双击的位置本身也算一个顶点（与上一个顶点重合时不重复添加）
+  const ll = L.latLng(e.latlng.lat, normLon(e.latlng.lng));
+  const last = dPts[dPts.length-1];
+  const isNew = !last ||
+    map.latLngToContainerPoint(last).distanceTo(map.latLngToContainerPoint(ll)) > 8;
+  if(isNew) dPts.push(ll);
+  finishDraw();
+});
 
 const DrawCtl = L.Control.extend({
   options:{ position:'topright' },
   onAdd:function(){
     const d = L.DomUtil.create('div','leaflet-bar draw-ctl');
-    d.innerHTML = `<a href="#" title="绘制多边形：左键取点，右键撤销，双击结束（只取 2 点则按对角线生成矩形）；再次点此清除">⬠</a>`;
+    d.innerHTML = `<a href="#" title="绘制多边形：左键取点，双击的位置算最后一个点并结束，右键撤销；画框只需点一个角再在对角双击；再次点此清除">⬠</a>`;
     drawBtn = d.querySelector('a');
     L.DomEvent.disableClickPropagation(d);
     L.DomEvent.on(drawBtn,'click',ev=>{
