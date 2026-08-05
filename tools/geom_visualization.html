@@ -62,6 +62,26 @@
     padding:1px 6px; border-radius:3px; box-shadow:0 1px 3px rgba(0,0,0,.35);
   }
   .leaflet-tooltip.measure-label::before { display:none; }
+
+  /* 右键显示坐标 */
+  .pick-popup { display:flex; align-items:center; gap:8px; font-size:13px; white-space:nowrap; }
+  .pick-popup .k { color:#888; }
+  .pick-popup .v { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:13px; }
+  .btn {
+    font-size:11px; padding:2px 7px; border:1px solid #cfd4da; background:#fff; color:#333;
+    border-radius:4px; cursor:pointer; white-space:nowrap; font-family:inherit;
+  }
+  .btn:hover { background:#eef2f7; border-color:#9fb0c4; }
+
+  /* 绘制 Polygon */
+  .draw-ctl a { width:34px; height:34px; line-height:34px; text-align:center; font-size:16px; display:block; }
+  .draw-ctl a.active { background:#ffd9d2; }
+  .box-main.draw-main { flex-direction:row; align-items:center; gap:6px; }
+  #draw-wkt {
+    flex:1; min-width:0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px;
+    padding:7px 8px; border:1px solid #cfd4da; border-radius:5px; background:#fff; color:#333;
+  }
+  #draw-wkt::placeholder { color:#a8adb5; font-family:-apple-system,"PingFang SC",sans-serif; }
 </style>
 </head>
 <body>
@@ -69,6 +89,14 @@
   <div id="map"></div>
 
   <div id="inputs">
+    <div class="box">
+      <div class="hd"><strong>绘制 Polygon</strong></div>
+      <div class="box-main draw-main">
+        <input id="draw-wkt" readonly placeholder="点击地图右上角 ⬠ 开始绘制：左键取点，右键撤销，双击结束">
+        <button class="btn" id="draw-copy">复制</button>
+        <button class="btn" id="draw-clear">清除</button>
+      </div>
+    </div>
     <div class="box">
       <div class="hd"><strong>点 (Point)</strong><span class="cnt" id="cnt-p">0</span></div>
       <div class="box-main">
@@ -177,6 +205,7 @@ let measuring=false, mPts=[], mLine=null, rulerBtn=null, clickTimer=null;
 function setRulerActive(on){ if(rulerBtn) rulerBtn.classList.toggle('active', on); }
 function clearMeasure(){ measureLayer.clearLayers(); mPts=[]; mLine=null; }
 function startMeasure(){
+  if(drawing) finishDraw();   // 与绘制工具互斥
   clearMeasure(); measuring=true; setRulerActive(true);
   map.getContainer().style.cursor='crosshair';
   map.doubleClickZoom.disable();
@@ -392,6 +421,120 @@ const scheduleRender=()=>{ clearTimeout(_t); _t=setTimeout(render, 350); };
 ['fit','swap','tg-ptnum','tg-vtx'].forEach(id=>document.getElementById(id).addEventListener('change', render));
 
 render();
+
+/* ============ 右键显示坐标 ============ */
+const f6 = v => v.toFixed(6);
+const pickPopup = L.popup({ className:'pick-pop', closeButton:true, autoPan:true });
+
+function copyText(text, btn){
+  const done = ()=>{ if(btn){ const o=btn.textContent; btn.textContent='✓ 已复制'; setTimeout(()=>btn.textContent=o,1200); } };
+  const fallback = ()=>{
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ if(btn) btn.textContent='复制失败'; }
+    document.body.removeChild(ta);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else fallback();
+}
+
+map.on('contextmenu', e=>{
+  if(e.originalEvent) L.DomEvent.preventDefault(e.originalEvent);
+  if(drawing){ undoDrawPoint(); return; }   // 绘制中：右键撤销上一个点
+  const lon = normLon(e.latlng.lng), lat = e.latlng.lat;
+  const txt = `${f6(lon)}, ${f6(lat)}`;
+  const d = L.DomUtil.create('div','pick-popup');
+  d.innerHTML = `<span class="k">坐标：</span><span class="v">${txt}</span><button class="btn">复制</button>`;
+  L.DomEvent.disableClickPropagation(d);
+  const btn = d.querySelector('button');
+  btn.addEventListener('click', ()=>copyText(txt, btn));
+  pickPopup.setLatLng([lat, lon]).setContent(d).openOn(map);
+});
+// 兜底：屏蔽地图区域的浏览器默认右键菜单（弹窗/控制面板内仍可正常右键）
+map.getContainer().addEventListener('contextmenu', ev=>{
+  if(ev.target.closest && ev.target.closest('.leaflet-popup, .layer-panel, .leaflet-bar')) return;
+  ev.preventDefault();
+});
+
+/* ============ 绘制 Polygon ============ */
+const drawLayer = L.layerGroup().addTo(map);
+const drawStyle = { color:'#ff5a3c', weight:2, fillColor:'#ff5a3c', fillOpacity:0.2 };
+let drawing=false, dPts=[], dLine=null, dPoly=null, drawBtn=null, dClickTimer=null;
+const wktEl = document.getElementById('draw-wkt');
+
+function drawWKT(){
+  if(!dPts.length) return '';
+  const r = dPts.map(p=>`${f6(normLon(p.lng))} ${f6(p.lat)}`);
+  if(dPts.length < 3) return `已取 ${dPts.length} 个点：${r.join(', ')}`;
+  r.push(r[0]);   // 自动闭合
+  return `POLYGON((${r.join(', ')}))`;
+}
+function updateWKT(){ wktEl.value = drawWKT(); }
+function redrawTemp(){
+  drawLayer.clearLayers(); dLine=null; dPoly=null;
+  dPts.forEach(p=>L.circleMarker(p,{radius:3,color:'#fff',weight:1.5,fillColor:'#ff5a3c',fillOpacity:1}).addTo(drawLayer));
+  if(dPts.length>1) dLine = L.polyline(dPts,{color:'#ff5a3c',weight:2,dashArray:'5,5'}).addTo(drawLayer);
+  updateWKT();
+}
+function setDrawActive(on){ if(drawBtn) drawBtn.classList.toggle('active', on); }
+function clearDraw(){ drawLayer.clearLayers(); dPts=[]; dLine=null; dPoly=null; wktEl.value=''; }
+function startDraw(){
+  if(measuring) stopMeasure(true);
+  clearDraw(); drawing=true; setDrawActive(true);
+  map.getContainer().style.cursor='crosshair';
+  map.doubleClickZoom.disable();
+}
+function finishDraw(){
+  drawing=false; setDrawActive(false);
+  map.getContainer().style.cursor='';
+  map.doubleClickZoom.enable();
+  if(dPts.length>=3){
+    drawLayer.clearLayers(); dLine=null;
+    dPoly = L.polygon(dPts, drawStyle).addTo(drawLayer);
+    dPts.forEach((p,i)=>L.circleMarker(p,{radius:3,color:'#fff',weight:1.5,fillColor:'#ff5a3c',fillOpacity:1})
+      .bindTooltip(String(i+1),{permanent:true,direction:'top',offset:[0,-2],className:'vtx-label vtx-poly'})
+      .addTo(drawLayer));
+  }
+  updateWKT();
+}
+function addDrawPoint(ll){ dPts.push(L.latLng(ll.lat, normLon(ll.lng))); redrawTemp(); }
+function undoDrawPoint(){ if(dPts.length){ dPts.pop(); redrawTemp(); } }
+
+map.on('click', e=>{
+  if(!drawing) return;
+  clearTimeout(dClickTimer);
+  dClickTimer = setTimeout(()=>addDrawPoint(e.latlng), 220);  // 防止双击误加点
+});
+map.on('dblclick', e=>{ if(drawing){ clearTimeout(dClickTimer); finishDraw(); } });
+
+const DrawCtl = L.Control.extend({
+  options:{ position:'topright' },
+  onAdd:function(){
+    const d = L.DomUtil.create('div','leaflet-bar draw-ctl');
+    d.innerHTML = `<a href="#" title="绘制多边形：左键取点，右键撤销，双击结束；再次点此清除">⬠</a>`;
+    drawBtn = d.querySelector('a');
+    L.DomEvent.disableClickPropagation(d);
+    L.DomEvent.on(drawBtn,'click',ev=>{
+      L.DomEvent.preventDefault(ev);
+      if(drawing) { finishDraw(); if(dPts.length<3) clearDraw(); }  // 绘制中 -> 结束
+      else if(dPts.length) clearDraw();                             // 有结果 -> 清除
+      else startDraw();                                             // 空闲 -> 开始
+    });
+    return d;
+  }
+});
+map.addControl(new DrawCtl());
+
+document.getElementById('draw-copy').addEventListener('click', function(){
+  if(!wktEl.value || dPts.length<3) return;
+  copyText(wktEl.value, this);
+});
+document.getElementById('draw-clear').addEventListener('click', ()=>{
+  if(drawing) finishDraw();
+  clearDraw();
+});
 </script>
 </body>
 </html>
