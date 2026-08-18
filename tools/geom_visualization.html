@@ -106,21 +106,21 @@
     <div class="box">
       <div class="hd"><strong>点 (Point)</strong><span class="cnt" id="cnt-p">0</span></div>
       <div class="box-main">
-        <div class="exmp">每行一个点，多点也可用分号分隔。例如：<code>POINT (-85.9745005 39.9344051)</code> · <code>-85.9745005 39.9344051</code></div>
+        <div class="exmp">每行一个点，多点也可用分号分隔；也可粘贴 GeoJSON（Point / MultiPoint / Feature / FeatureCollection，可多个）。例如：<code>POINT (-85.9745005 39.9344051)</code> · <code>-85.9745005 39.9344051</code> · <code>{"type":"Point","coordinates":[-117.75413,33.65211]}</code></div>
         <textarea id="ta-point" spellcheck="false"></textarea>
       </div>
     </div>
     <div class="box">
       <div class="hd"><strong>线 (Line)</strong><span class="cnt" id="cnt-l">0</span></div>
       <div class="box-main">
-        <div class="exmp">每行一条线，顶点用分号/换行分隔。例如：<code>LINESTRING(-118.36 33.82, -118.37 33.83)</code> · <code>-118.3628708,33.8218108;-118.3628641,33.821828;-118.3630396,33.8218758</code></div>
+        <div class="exmp">每行一条线，顶点用分号/换行分隔；也可粘贴 GeoJSON（LineString / MultiLineString / Feature / FeatureCollection，可多个）。例如：<code>LINESTRING(-118.36 33.82, -118.37 33.83)</code> · <code>-118.3628708,33.8218108;-118.3628641,33.821828</code> · <code>{"type":"LineString","coordinates":[[-117.75413,33.65211],[-117.75433,33.6521]]}</code></div>
         <textarea id="ta-line" spellcheck="false"></textarea>
       </div>
     </div>
     <div class="box">
       <div class="hd"><strong>面 (Polygon / AOI)</strong><span class="cnt" id="cnt-a">0</span></div>
       <div class="box-main">
-        <div class="exmp">每行一个多边形，可不闭合（自动闭合）。例如：<code>POLYGON((-118.36 33.82,-118.37 33.82,-118.37 33.83,-118.36 33.82))</code> · <code>-118.36,33.82;-118.37,33.82;-118.37,33.83</code></div>
+        <div class="exmp">每行一个多边形，可不闭合（自动闭合）；也可粘贴 GeoJSON（Polygon / MultiPolygon，支持内环挖洞，可多个）。例如：<code>POLYGON((-118.36 33.82,-118.37 33.82,-118.37 33.83,-118.36 33.82))</code> · <code>-118.36,33.82;-118.37,33.82;-118.37,33.83</code> · <code>{"type":"MultiPolygon","coordinates":[[[[-117.754,33.652],[-117.753,33.652],[-117.753,33.653],[-117.754,33.652]]]]}</code></div>
         <textarea id="ta-poly" spellcheck="false"></textarea>
       </div>
     </div>
@@ -284,33 +284,74 @@ function coords(chunk){
   for(let i=0;i+1<n.length;i+=2) out.push(toLatLng(n[i],n[i+1]));
   return out;
 }
-// 尝试解析 GeoJSON，返回 {points:[], lines:[], polys:[]} 或 null
-function parseGeoJSON(text){
-  let obj; try{ obj=JSON.parse(text); }catch(e){ return null; }
-  const res={points:[],lines:[],polys:[]};
-  const geoms=[];
-  (function walk(o){
-    if(!o||typeof o!=='object')return;
-    if(o.type==='FeatureCollection') (o.features||[]).forEach(walk);
-    else if(o.type==='Feature') walk(o.geometry);
-    else if(o.type&&o.coordinates) geoms.push(o);
-  })(obj);
-  const ll = c => toLatLng(c[0],c[1]);
-  for(const g of geoms){
-    const t=g.type, c=g.coordinates;
-    if(t==='Point') res.points.push(ll(c));
-    else if(t==='MultiPoint') c.forEach(p=>res.points.push(ll(p)));
-    else if(t==='LineString') res.lines.push(c.map(ll));
-    else if(t==='MultiLineString') c.forEach(l=>res.lines.push(l.map(ll)));
-    else if(t==='Polygon') res.polys.push(c.map(r=>r.map(ll)));
-    else if(t==='MultiPolygon') c.forEach(p=>res.polys.push(p.map(r=>r.map(ll))));
+/* ---------- GeoJSON ---------- */
+// 找到与 start 处括号配对的下标（跳过字符串内的括号）；不配对返回 -1
+function matchBracket(text, start){
+  let depth=0, inStr=false, esc=false;
+  for(let i=start;i<text.length;i++){
+    const c=text[i];
+    if(inStr){ if(esc) esc=false; else if(c==='\\') esc=true; else if(c==='"') inStr=false; continue; }
+    if(c==='"'){ inStr=true; continue; }
+    if(c==='{'||c==='[') depth++;
+    else if(c==='}'||c===']'){ if(--depth===0) return i; }
   }
-  return res;
+  return -1;
+}
+// 把一段文本切成 JSON 片段 + 其余普通文本，因此同一个框里可以粘贴多个 GeoJSON，
+// 也可以 GeoJSON 与 WKT / 裸坐标混排
+function splitJson(text){
+  const jsons=[]; let plain='', i=0;
+  while(i<text.length){
+    const c=text[i];
+    if(c==='{'||c==='['){
+      const end=matchBracket(text,i);
+      if(end>i){ jsons.push(text.slice(i,end+1)); plain+='\n'; i=end+1; continue; }
+    }
+    plain+=c; i++;
+  }
+  return { jsons, plain };
+}
+// 递归收集几何体：FeatureCollection / Feature / GeometryCollection / 裸几何 / 数组
+function collectGeoms(o, out){
+  if(!o || typeof o!=='object') return;
+  if(Array.isArray(o)){ o.forEach(v=>collectGeoms(v,out)); return; }
+  if(o.type==='FeatureCollection'){ collectGeoms(o.features,out); return; }
+  if(o.type==='Feature'){ collectGeoms(o.geometry,out); return; }
+  if(o.type==='GeometryCollection'){ collectGeoms(o.geometries,out); return; }
+  if(typeof o.type==='string' && Array.isArray(o.coordinates)){ out.push(o); return; }
+  // 没有 type 的外层包装：继续往下找
+  ['geometry','geometries','features'].forEach(k=>{ if(o[k]) collectGeoms(o[k],out); });
+}
+const isNum = v => typeof v==='number' && isFinite(v);
+// GeoJSON 坐标 [lon, lat(, z)] -> leaflet 的 [lat, lon]；非法返回 null
+function gjPt(c){
+  if(!Array.isArray(c) || !isNum(c[0]) || !isNum(c[1])) return null;
+  return toLatLng(c[0], c[1]);
+}
+function gjLine(arr){
+  if(!Array.isArray(arr)) return [];
+  const out=[]; for(const c of arr){ const p=gjPt(c); if(p) out.push(p); }
+  return out;
+}
+function gjRings(arr){
+  return (Array.isArray(arr)?arr:[]).map(r=>gjLine(r)).filter(r=>r.length>=3);
+}
+// 按类型把几何体写入 res.points / res.lines / res.polys
+function addGeoms(geoms, res){
+  for(const g of geoms){
+    const t=String(g.type||''), c=g.coordinates;
+    if(t==='Point'){ const p=gjPt(c); if(p) res.points.push(p); }
+    else if(t==='MultiPoint'){ gjLine(c).forEach(p=>res.points.push(p)); }
+    else if(t==='LineString'){ const l=gjLine(c); if(l.length>=2) res.lines.push(l); }
+    else if(t==='MultiLineString'){ (Array.isArray(c)?c:[]).forEach(one=>{ const l=gjLine(one); if(l.length>=2) res.lines.push(l); }); }
+    else if(t==='Polygon'){ const rings=gjRings(c); if(rings.length) res.polys.push(rings); }
+    else if(t==='MultiPolygon'){ (Array.isArray(c)?c:[]).forEach(one=>{ const rings=gjRings(one); if(rings.length) res.polys.push(rings); }); }
+  }
 }
 
-// 解析点输入
-function parsePoints(text){
-  const gj=parseGeoJSON(text); if(gj) return gj.points;
+/* ---------- WKT / 裸坐标 ---------- */
+// 解析点文本
+function parsePointsText(text){
   const pts=[];
   text.split(/[;\n]/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
     const n=nums(line);
@@ -319,9 +360,8 @@ function parsePoints(text){
   });
   return pts;
 }
-// 解析线输入：每行一条线（WKT 内可能含多段，用括号分组）
-function parseLines(text){
-  const gj=parseGeoJSON(text); if(gj) return gj.lines;
+// 解析线文本：每行一条线（WKT 内可能含多段，用括号分组）
+function parseLinesText(text){
   const lines=[];
   text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(row=>{
     const groupsInParen = row.match(/\(([^()]*)\)/g);
@@ -335,9 +375,8 @@ function parseLines(text){
   });
   return lines;
 }
-// 解析面输入：每行一个多边形（可含多个环）
-function parsePolys(text){
-  const gj=parseGeoJSON(text); if(gj) return gj.polys;
+// 解析面文本：每行一个多边形（可含多个环）
+function parsePolysText(text){
   const polys=[];
   text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(row=>{
     const rings=[];
@@ -350,6 +389,30 @@ function parsePolys(text){
     if(rings.length) polys.push(rings);
   });
   return polys;
+}
+
+/* ---------- 统一入口 ---------- */
+// kind: 'point' | 'line' | 'poly'，决定非 GeoJSON 片段按哪种传统格式解析。
+// 返回 {points, lines, polys}：GeoJSON 里的几何按其真实类型归位，
+// 所以线框里粘了 Polygon 也能正确画到面图层，而不是报错。
+function parseInput(text, kind){
+  const res={points:[],lines:[],polys:[]};
+  if(!text.trim()) return res;
+  const legacy = t => {
+    if(!t.trim()) return;
+    if(kind==='point')     res.points.push(...parsePointsText(t));
+    else if(kind==='line') res.lines.push(...parseLinesText(t));
+    else                   res.polys.push(...parsePolysText(t));
+  };
+  const { jsons, plain } = splitJson(text);
+  for(const j of jsons){
+    let obj=null; try{ obj=JSON.parse(j); }catch(e){}
+    const geoms=[]; if(obj) collectGeoms(obj, geoms);
+    if(geoms.length) addGeoms(geoms, res);
+    else legacy(j);   // 不是 GeoJSON（例如 [lon,lat] 裸数组、或还没输入完整的片段）
+  }
+  legacy(plain);
+  return res;
 }
 
 /* ============ 渲染 ============ */
@@ -378,8 +441,19 @@ function render(){
 
   try{
     const showPtNum=document.getElementById('tg-ptnum').checked;
-    const pts=parsePoints(tp.value); setErr('ta-point', tp.value.trim() && !pts.length);
-    if(tp.value.trim() && !pts.length) errs.push('点');
+    const showVtx=document.getElementById('tg-vtx').checked;
+
+    const rp=parseInput(tp.value,'point'), rl=parseInput(tl.value,'line'), ra=parseInput(ta.value,'poly');
+    // 某个框有内容但一个图形都没解析出来 -> 标红提示
+    [['ta-point',tp,rp,'点'],['ta-line',tl,rl,'线'],['ta-poly',ta,ra,'面']].forEach(([id,el,r,name])=>{
+      const bad = !!el.value.trim() && !r.points.length && !r.lines.length && !r.polys.length;
+      setErr(id,bad); if(bad) errs.push(name);
+    });
+    // GeoJSON 的几何按真实类型汇总（例如面框里的 Point 也会画成点）
+    const pts   = [...rp.points, ...rl.points, ...ra.points];
+    const lines = [...rp.lines,  ...rl.lines,  ...ra.lines];
+    const polys = [...rp.polys,  ...rl.polys,  ...ra.polys];
+
     pts.forEach((ll,i)=>{
       const m=L.circleMarker(ll, pointStyle)
         .bindPopup(`点 ${i+1}<br>${ll[1].toFixed(6)}, ${ll[0].toFixed(6)}`)
@@ -389,10 +463,6 @@ function render(){
     });
     document.getElementById('cnt-p').textContent=pts.length;
 
-    const showVtx=document.getElementById('tg-vtx').checked;
-
-    const lines=parseLines(tl.value); setErr('ta-line', tl.value.trim() && !lines.length);
-    if(tl.value.trim() && !lines.length) errs.push('线');
     lines.forEach((c,i)=>{
       const pl=L.polyline(c, lineStyle).bindPopup(`线 ${i+1}（${c.length} 个顶点）`).addTo(groups.line);
       if(showVtx) addVtxLabels(c, groups.line, 'vtx-line', false);
@@ -400,10 +470,9 @@ function render(){
     });
     document.getElementById('cnt-l').textContent=lines.length;
 
-    const polys=parsePolys(ta.value); setErr('ta-poly', ta.value.trim() && !polys.length);
-    if(ta.value.trim() && !polys.length) errs.push('面');
     polys.forEach((rings,i)=>{
-      const pg=L.polygon(rings, polyStyle).bindPopup(`面 ${i+1}（${rings[0].length} 个顶点）`).addTo(groups.poly);
+      const holes = rings.length>1 ? `，${rings.length-1} 个内环` : '';
+      const pg=L.polygon(rings, polyStyle).bindPopup(`面 ${i+1}（${rings[0].length} 个顶点${holes}）`).addTo(groups.poly);
       if(showVtx) rings.forEach(r=>addVtxLabels(r, groups.poly, 'vtx-poly', true));
       bounds.extend(pg.getBounds()); total++;
     });
