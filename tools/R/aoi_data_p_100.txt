@@ -1,0 +1,2 @@
+aoi_id	aoi_name	fix	polygon_str	fix_polygon_str
+1	测试	1	POLYGON((-118.36 33.82,-118.37 33.82,-118.37 33.83,-118.36 33.82))
