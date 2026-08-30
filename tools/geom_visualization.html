@@ -73,6 +73,13 @@
   }
   .btn:hover { background:#eef2f7; border-color:#9fb0c4; }
 
+  /* 面（AOI）点击弹窗：面积 / 周长 */
+  .geom-popup { font-size:13px; line-height:1.6; white-space:nowrap; }
+  .geom-popup .sub { color:#888; font-size:12px; }
+  .geom-popup .row { display:flex; gap:8px; margin-top:2px; }
+  .geom-popup .k { color:#888; flex:0 0 34px; }
+  .geom-popup .v { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
   /* 绘制 Polygon */
   .draw-ctl a { width:34px; height:34px; line-height:34px; text-align:center; font-size:16px; display:block; }
   .draw-ctl a.active { background:#ffd9d2; }
@@ -421,6 +428,64 @@ const pointStyle={ radius:5, color:'#fff', weight:1.5, fillColor:'#1e73ff', fill
 const lineStyle ={ color:'#00c2ff', weight:3, opacity:0.9 };
 const polyStyle ={ color:'#ff5a3c', weight:2, fillColor:'#ff5a3c', fillOpacity:0.25 };
 
+/* ---- 面积 / 周长（WGS84，按纬度取局部等效半径，小范围误差 < 0.01%） ---- */
+const RAD = Math.PI / 180;
+const WGS_A = 6378137, WGS_E2 = 0.00669437999014;
+// 某纬度处最贴合椭球的球半径 sqrt(M*N)
+function earthR(latDeg){
+  const s = Math.sin(latDeg * RAD), w = 1 - WGS_E2 * s * s;
+  const N = WGS_A / Math.sqrt(w);
+  const M = WGS_A * (1 - WGS_E2) / (w * Math.sqrt(w));
+  return Math.sqrt(M * N);
+}
+// 经差纠偏（跨 180 度经线）
+function dLonNorm(d){ if(d > 180) d -= 360; if(d < -180) d += 360; return d; }
+// 两点大圆距离（米），顶点为 [lat, lon]
+function segLen(a, b){
+  const R = earthR((a[0] + b[0]) / 2);
+  const dLat = (b[0] - a[0]) * RAD, dLon = dLonNorm(b[1] - a[1]) * RAD;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a[0]*RAD) * Math.cos(b[0]*RAD) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+// 单环面积（平方米），自动闭合，与绕向无关
+function ringArea(ring){
+  const n = ring.length;
+  if(n < 3) return 0;
+  let latSum = 0;
+  for(const p of ring) latSum += p[0];
+  const R = earthR(latSum / n);
+  let sum = 0;
+  for(let i=0;i<n;i++){
+    const a = ring[i], b = ring[(i+1) % n];
+    sum += dLonNorm(b[1] - a[1]) * RAD * (2 + Math.sin(a[0]*RAD) + Math.sin(b[0]*RAD));
+  }
+  return Math.abs(sum * R * R / 2);
+}
+// 单环周长（米），自动闭合
+function ringPerimeter(ring){
+  const n = ring.length;
+  if(n < 2) return 0;
+  let d = 0;
+  for(let i=0;i<n;i++) d += segLen(ring[i], ring[(i+1) % n]);
+  return d;
+}
+// 顶点个数：首尾重合的闭合环不重复计末点
+function vtxCount(ring){
+  const n = ring.length;
+  return (n > 1 && ring[0][0] === ring[n-1][0] && ring[0][1] === ring[n-1][1]) ? n - 1 : n;
+}
+// 多环：外环面积减去内环（洞）面积；周长取外环
+function polyMeasure(rings){
+  let area = ringArea(rings[0]);
+  for(let i=1;i<rings.length;i++) area -= ringArea(rings[i]);
+  return { area: Math.max(area, 0), perimeter: ringPerimeter(rings[0]) };
+}
+const fmtNum = v => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+// 面积：平方米
+function fmtArea(m2){ return `${fmtNum(m2)} 平方米`; }
+// 周长：米
+function fmtLen(m){ return `${fmtNum(m)} 米`; }
+
 function setErr(id, bad){ document.getElementById(id).classList.toggle('err', bad); }
 
 // 给一组顶点按顺序（从 1 开始）添加序号标签。closed=true 时若首尾重合则跳过末点
@@ -472,7 +537,14 @@ function render(){
 
     polys.forEach((rings,i)=>{
       const holes = rings.length>1 ? `，${rings.length-1} 个内环` : '';
-      const pg=L.polygon(rings, polyStyle).bindPopup(`面 ${i+1}（${rings[0].length} 个顶点${holes}）`).addTo(groups.poly);
+      const ms = polyMeasure(rings);
+      const nv = vtxCount(rings[0]);
+      const html = `<div class="geom-popup">`
+        + `<b>面 ${i+1}</b><span class="sub">（${nv} 个顶点${holes}）</span>`
+        + `<div class="row"><span class="k">面积</span><span class="v">${fmtArea(ms.area)}</span></div>`
+        + `<div class="row"><span class="k">周长</span><span class="v">${fmtLen(ms.perimeter)}</span></div>`
+        + `</div>`;
+      const pg=L.polygon(rings, polyStyle).bindPopup(html).addTo(groups.poly);
       if(showVtx) rings.forEach(r=>addVtxLabels(r, groups.poly, 'vtx-poly', true));
       bounds.extend(pg.getBounds()); total++;
     });
