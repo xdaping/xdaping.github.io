@@ -88,3 +88,25 @@ print('检查完毕')
 ## 说明
 
 地图边界与地名仅为历史地理教学示意，古地名以约略对应之今地标注（少数关隘、战场、遗址取邻近今地为落点），边界未随各朝逐年精绘，不代表现代国界或任何主权主张。并存政权（如辽、西夏、金、大理、吐蕃、渤海、高丽、交趾等）在相应朝代中一并标出，注释里已注明其归属。地理轮廓数据来自公开数据集（阿里云 DataV、Natural Earth），底图为 NASA Blue Marble（公有领域）。
+
+## 寰宇版 `dynasty_world.html`
+
+在线瓦片底图版本，额外标出**各朝同时期世界其他地区的政权与文明**（共 264 条，按东亚、中亚、南亚、西亚、欧洲、非洲、美洲七区着色）。
+
+- 底图可切换：浅色无注记（默认，Esri Light Gray Base，不含现代地名，避免与历代地名混淆）/ 高德路网 / OSM 路网 / 谷歌卫星（需联网；谷歌在中国大陆需代理）
+- 底部时间轴切换朝代（也可用键盘 ← →），右上「华 / 🌏」在中国视角与世界视角间切换
+- 左侧面板「本朝地名 / 世界同期」两栏，点击世界政权会飞到其位置
+- **历史疆域**：每朝叠加一张最接近年份的世界政区快照，本朝疆域以朱红高亮，其他政权按名称着色，悬停显示名称（数据来自 [historical-basemaps](https://github.com/aourednik/historical-basemaps)，GPL-3.0，边界为约略示意）
+
+| 文件 | 作用 |
+|---|---|
+| `world_data.py` | 世界同期政权数据源 |
+| `template_world.html` | 页面模板（Leaflet） |
+| `fetch_borders.py` | 下载 historical-basemaps 年份快照，精简后写出 `borders_data.json`（朝代→年份对照表在脚本内） |
+| `borders_data.json` | 各朝历史疆域（已精简） |
+| `build_world.py` | 由 `map_data.json` + `cities_data.py` + `world_data.py` 生成 `dynasty_world.html` |
+
+    python3 fetch_borders.py   # 仅在需要重新生成疆域时运行（需联网）
+    python3 build_world.py
+
+若直接双击打开时 OSM 瓦片加载失败（OSM 要求请求带 Referer），可在本目录运行 `python3 -m http.server` 后访问 `http://localhost:8000/dynasty_world.html`。
