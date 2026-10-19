@@ -93,7 +93,7 @@ print('检查完毕')
 
 在线瓦片底图版本，额外标出**各朝同时期世界其他地区的政权与文明**（共 264 条，按东亚、中亚、南亚、西亚、欧洲、非洲、美洲七区着色）。
 
-- 底图可切换：浅色无注记（默认，Esri Light Gray Base，不含现代地名，避免与历代地名混淆）/ 高德路网 / OSM 路网 / 谷歌卫星（需联网；谷歌在中国大陆需代理）
+- 底图可切换：浅色无注记（默认，高德 ltype=1 仅陆地水域，不含现代地名与道路，避免与历代地名混淆）/ 高德路网 / OSM 路网 / 谷歌卫星（需联网；谷歌在中国大陆需代理）
 - 底部时间轴切换朝代（也可用键盘 ← →），右上「华 / 🌏」在中国视角与世界视角间切换
 - 左侧面板「本朝地名 / 世界同期」两栏，点击世界政权会飞到其位置
 - **历史疆域**：每朝叠加一张最接近年份的世界政区快照，本朝疆域以朱红高亮，其他政权按名称着色，悬停显示名称（数据来自 [historical-basemaps](https://github.com/aourednik/historical-basemaps)，GPL-3.0，边界为约略示意）
@@ -103,7 +103,10 @@ print('检查完毕')
 | `world_data.py` | 世界同期政权数据源 |
 | `template_world.html` | 页面模板（Leaflet） |
 | `fetch_borders.py` | 下载 historical-basemaps 年份快照，精简后写出 `borders_data.json`（朝代→年份对照表在脚本内） |
+| `border_names_zh.py` | 疆域政区英文名 → 中文名（同名者自动合并，如澳洲各殖民地 → 澳大利亚） |
+| `border_overrides.py` | 手绘修正的疆域：数据集宋代快照缺金朝、辽域过小，故北宋（宋/辽/西夏/高丽）与南宋（宋/金/西夏/高丽）按《中国历史地图集》约略重绘 |
 | `borders_data.json` | 各朝历史疆域（已精简） |
+| `dynasty_world_data/` | 构建产物：`base.js`（地名、世界政权等基础数据）与 `borders_<朝代>.js`（各朝疆域，切换朝代时按需加载）；须与 `dynasty_world.html` 一起发布 |
 | `build_world.py` | 由 `map_data.json` + `cities_data.py` + `world_data.py` 生成 `dynasty_world.html` |
 
     python3 fetch_borders.py   # 仅在需要重新生成疆域时运行（需联网）

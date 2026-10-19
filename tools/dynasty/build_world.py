@@ -16,6 +16,8 @@ import re
 HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
 
+from shapely.geometry import Point, Polygon, MultiPolygon
+
 from cities_data import DYNASTIES, DYNASTY_ORDER
 from world_data import WORLD, REGIONS
 
@@ -53,9 +55,16 @@ for key in DYNASTY_ORDER:
         cities.append({"name": c['name'], "full": c['full'], "tier": c['tier'],
                        "note": c['note'], "lat": lat, "lon": lon})
     world = WORLD.get(key, {"summary": "", "states": []})
+    bd = borders.get(key)
+    if bd:
+        # 已有「世界同期」菱形标记的疆域不再重复标名
+        pts = [Point(s['lon'], s['lat']) for s in world['states']]
+        for f in bd['features']:
+            poly = MultiPolygon([Polygon([(x, y) for y, x in ring[0]], [[(x, y) for y, x in r] for r in ring[1:]]) for ring in f['g']]).buffer(0)
+            f['m'] = 1 if any(poly.contains(pt) for pt in pts) else 0
     dynasties[key] = {"label": d['label'], "years": d['years'], "summary": d['summary'],
                       "cities": cities, "worldSummary": world['summary'], "world": world['states'],
-                      "borders": borders.get(key)}
+                      "borders": bd}
 
 out = {
     "china": path_to_rings(base['chinaPath']),
@@ -66,11 +75,35 @@ out = {
     "dynasties": dynasties,
 }
 
-blob = json.dumps(out, ensure_ascii=False, separators=(',', ':'))
+# ---------- 拆分输出 ----------
+# dynasty_world.html                 页面本身（样式与脚本）
+# dynasty_world_data/base.js          地名、世界同期政权、中国轮廓等基础数据
+# dynasty_world_data/borders_<朝>.js  各朝历史疆域，切换到该朝时才加载
+import hashlib, shutil
+
+OUT_DIR = 'dynasty_world_data'
+if os.path.isdir(OUT_DIR):
+    shutil.rmtree(OUT_DIR)
+os.makedirs(OUT_DIR)
+
+dump = lambda o: json.dumps(o, ensure_ascii=False, separators=(',', ':'))
+files = {}
+for key, d in dynasties.items():
+    bd = d.pop('borders')
+    if bd:
+        files[f'borders_{key}.js'] = f'window.DYNASTY_BORDERS=window.DYNASTY_BORDERS||{{}};window.DYNASTY_BORDERS["{key}"]={dump(bd)};\n'
+files['base.js'] = f'window.DYNASTY_BASE={dump(out)};\n'
+
+version = hashlib.md5(''.join(files[k] for k in sorted(files)).encode('utf-8')).hexdigest()[:8]
+for name, text in files.items():
+    open(os.path.join(OUT_DIR, name), 'w', encoding='utf-8').write(text)
+
 tpl = open('template_world.html', encoding='utf-8').read()
-open('dynasty_world.html', 'w', encoding='utf-8').write(tpl.replace('%%MAP_DATA%%', blob))
+open('dynasty_world.html', 'w', encoding='utf-8').write(tpl.replace('%%VERSION%%', version))
 
 n_city = sum(len(d['cities']) for d in dynasties.values())
 n_world = sum(len(d['world']) for d in dynasties.values())
-print(f'{len(dynasties)} 朝，地名 {n_city} 处，世界同期政权 {n_world} 条；数据 {len(blob) // 1024} KB')
-print('已写出 dynasty_world.html')
+print(f'{len(dynasties)} 朝，地名 {n_city} 处，世界同期政权 {n_world} 条；版本 {version}')
+for name in ['base.js'] + sorted(k for k in files if k != 'base.js'):
+    print(f'  {OUT_DIR}/{name:<24} {len(files[name].encode("utf-8")) // 1024:>5} KB')
+print(f'  dynasty_world.html {os.path.getsize("dynasty_world.html") // 1024} KB')
