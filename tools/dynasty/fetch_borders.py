@@ -31,7 +31,8 @@ CACHE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(tempfile.gettempdir()
 SNAPSHOT = {
     "xia": "bc2000", "shang": "bc1500", "dongzhou": "bc500", "chunqiu": "bc700", "zhanguo": "bc300",
     "qin": "bc200", "xihan": "bc100", "donghan": "100", "sanguo": "200", "xijin": "300",
-    "sui": "600", "tang": "800", "beisong": "1100", "nansong": "1200", "yuan": "1300",
+    "dongjin": "400", "shiliuguo": "400", "nanbeichao": "500",
+    "sui": "600", "tang": "700", "wudai": "900", "beisong": "1100", "nansong": "1200", "yuan": "1300",
     "ming": "1500", "qing": "1880",   # 1800 年快照把澳洲、北美等切成数百个部落，改用 1880
 }
 
@@ -75,7 +76,7 @@ def to_latlng(geom):
 
 # 先秦列国：与都城不在同一多边形、但属华夏诸侯的政区也标为「本朝」
 EXTRA_CHINA = {
-    "chunqiu": {"Wu"}, "dongzhou": {"Qin", "Wu", "Yue"}, "zhanguo": {"Qin", "Yue"},
+    "dongzhou": {"Qin", "Wu", "Yue"},
 }
 
 K = math.cos(math.radians(35.0)); S = 9.0
@@ -88,26 +89,44 @@ for key in DYNASTY_ORDER:
     raw = fetch(year)["features"]
     # 手绘修正：先裁成陆地，再按顺序互相扣除，最后从数据集各政区中挖掉
     ov_union = None
+    base_names = set()
     if key in OVERRIDES:
         land = unary_union([make_valid(shape(ft["geometry"])).buffer(0) for ft in raw if ft["geometry"]])
         taken = None
         for o in OVERRIDES[key]["features"]:
-            g = Polygon(o["ring"]).buffer(0).intersection(land)
+            # 疆域 = 手绘多边形 ∪ 数据集中 base 所列政区 ∪ add 补绘区，再按 clip 裁切、扣除 sub
+            parts = [Polygon(o["ring"]).buffer(0)] if o.get("ring") else []
+            for ft in raw:
+                if ft["geometry"] and ((ft["properties"] or {}).get("NAME") or "").strip() in o.get("base", ()):
+                    parts.append(make_valid(shape(ft["geometry"])).buffer(0))
+            parts += [Polygon(r).buffer(0) for r in o.get("add", ())]
+            g = unary_union(parts)
+            if o.get("clip"):
+                g = g.intersection(Polygon(o["clip"]).buffer(0))
+            for r in o.get("sub", ()):
+                g = g.difference(Polygon(r).buffer(0))
+            g = g.intersection(land)
             if taken is not None:
                 g = g.difference(taken)
             taken = g if taken is None else unary_union([taken, g])
-            groups[("china" if o["china"] else "other", o["zh"])] = {"names": [o["en"]], "geoms": [g], "china": o["china"]}
+            base_names.update(o.get("base", ()))
+            groups[("china" if o["china"] else "other", o["zh"])] = {
+                "names": [o["en"]], "geoms": [g], "china": o["china"], "label": o.get("label"), "hue": o.get("hue")}
         ov_union = taken.buffer(0.01)
     rename = RENAME.get(key, {})
     for ft in raw:
         name = ((ft["properties"] or {}).get("NAME") or "").strip()
-        if not name or name == "?" or not ft["geometry"] or name in DROP.get(key, ()):
+        if not name or name == "?" or not ft["geometry"] or name in DROP.get(key, ()) or name in base_names:
             continue
         g = make_valid(shape(ft["geometry"]))
         if g.geom_type == "GeometryCollection":
             g = g.buffer(0)
         if ov_union is not None:
+            a0 = g.area
             g = g.difference(ov_union)
+            # 大部分被手绘疆域覆盖、只剩边角的数据集政区直接丢弃
+            if g.is_empty or (g.area < 0.25 * a0 and g.area < 3):
+                continue
         if g.is_empty:
             continue
         zh = rename.get(name) or ZH.get(name)
@@ -138,9 +157,13 @@ for key in DYNASTY_ORDER:
         f = {"n": " / ".join(grp["names"][:3]), "z": zh, "g": coords,
              "p": [round(lp.y, 2), round(lp.x, 2)], "a": round(big.area, 1)}
         if grp["china"]: f["c"] = 1
+        if grp.get("label"): f["l"] = 1
+        if grp.get("hue") is not None: f["h"] = grp["hue"]
         feats.append(f)
     feats.sort(key=lambda f: f.get("c", 0))   # 本朝画在最上面
     result[key] = {"year": year, "features": feats}
+    if OVERRIDES.get(key, {}).get("note"):
+        result[key]["note"] = OVERRIDES[key]["note"]
     china = [f["z"] for f in feats if f.get("c")]
     print(f"{DYNASTIES[key]['label']:<4} {year:>7}  {len(feats):>3} 个政区  本朝: {china}")
 

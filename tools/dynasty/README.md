@@ -104,7 +104,7 @@ print('检查完毕')
 | `template_world.html` | 页面模板（Leaflet） |
 | `fetch_borders.py` | 下载 historical-basemaps 年份快照，精简后写出 `borders_data.json`（朝代→年份对照表在脚本内） |
 | `border_names_zh.py` | 疆域政区英文名 → 中文名（同名者自动合并，如澳洲各殖民地 → 澳大利亚） |
-| `border_overrides.py` | 手绘修正的疆域：数据集宋代快照缺金朝、辽域过小，故北宋（宋/辽/西夏/高丽）与南宋（宋/金/西夏/高丽）按《中国历史地图集》约略重绘 |
+| `border_overrides.py` | 手绘修正的疆域：大一统王朝（秦、两汉、西晋、隋、唐、元、明、清）取极盛期疆域（数据集多边形 + 补绘西域、漠北、东北、岭南等）；分裂时期（三国、东晋、五胡十六国、南北朝、北宋、南宋）按《中国历史地图集》约略重绘各政权 |
 | `borders_data.json` | 各朝历史疆域（已精简） |
 | `dynasty_world_data/` | 构建产物：`base.js`（地名、世界政权等基础数据）与 `borders_<朝代>.js`（各朝疆域，切换朝代时按需加载）；须与 `dynasty_world.html` 一起发布 |
 | `build_world.py` | 由 `map_data.json` + `cities_data.py` + `world_data.py` 生成 `dynasty_world.html` |

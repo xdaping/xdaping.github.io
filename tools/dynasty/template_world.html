@@ -111,6 +111,8 @@
     font-family: "STKaiti","KaiTi","Kaiti SC","Noto Serif SC",serif; }
   .theme-dark .marker.region .mk-label, .base-sat .marker.region .mk-label { color: hsl(var(--hc) 45% 85%); }
   .mk-label.p-center { left: 0; top: 0; transform: translate(-50%, -50%); }
+  .marker.region.cn .mk-label { font-size: 15px; font-weight: 800; color: hsl(var(--hc) 55% 30%); letter-spacing: 0.3em; }
+  .theme-dark .marker.region.cn .mk-label, .base-sat .marker.region.cn .mk-label { color: hsl(var(--hc) 70% 82%); }
   .marker { --g: 9px; }
   .mk-label.p-start  { left: var(--g); top: 0; transform: translate(0, -50%); }
   .mk-label.p-end    { left: calc(-1 * var(--g)); top: 0; transform: translate(-100%, -50%); }
@@ -146,6 +148,7 @@
   .hero { padding: 16px 18px 12px; }
   .hero .era { display: flex; align-items: baseline; gap: 12px; }
   .hero h2 { margin: 0; font-size: 32px; line-height: 1.05; color: var(--seal); letter-spacing: 0.06em; }
+  .hero h2.long { font-size: 24px; letter-spacing: 0.02em; white-space: nowrap; }
   .hero .years { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
   .chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .chip { font-size: 11px; border-radius: 20px; padding: 3px 10px; background: var(--jade-soft); color: var(--jade); font-weight: 600; }
@@ -233,7 +236,7 @@
   .tl-track::-webkit-scrollbar { display: none; }
   .tl-row { position: relative; display: flex; min-width: 100%; height: 100%; }
   .tl-row::before { content: ""; position: absolute; left: 24px; right: 24px; top: 26px; height: 2px; background: linear-gradient(90deg, transparent, var(--gold) 4%, var(--gold) 96%, transparent); opacity: 0.45; }
-  .tl-item { position: relative; flex: 1 0 74px; border: 0; background: none; cursor: pointer; padding: 18px 2px 0; display: flex; flex-direction: column; align-items: center; color: var(--ink-soft); }
+  .tl-item { position: relative; flex: 1 0 78px; border: 0; background: none; cursor: pointer; padding: 18px 2px 0; display: flex; flex-direction: column; align-items: center; color: var(--ink-soft); }
   .tl-item .d { width: 11px; height: 11px; border-radius: 50%; background: var(--panel-solid); box-shadow: 0 0 0 2px var(--ink-faint); transition: transform 0.15s ease; }
   .tl-item .n { font-size: 15px; font-weight: 700; margin-top: 8px; white-space: nowrap; }
   .tl-item .y { font-size: 9.5px; color: var(--ink-faint); margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -431,9 +434,12 @@ function buildBorders(d) {
   if (!d.borders) return;   // 尚未加载或无数据
   const sat = currentBase && BASEMAPS[currentBase].kind === "sat", dark = isDark();
   const polys = d.borders.features.map(f => {
-    const china = !!f.c, h = hueOf(f.n);
+    const china = !!f.c, h = f.h ?? hueOf(f.n);
+    // 本朝：朱红边框；分裂时期各政权（带 h）各用一种底色以示区分
     const style = china
-      ? { color: sat ? "#ffcf6e" : "#b0352b", weight: 2.2, opacity: 0.95, fillColor: sat ? "#ffcf6e" : "#c8483c", fillOpacity: sat ? 0.22 : 0.16 }
+      ? { color: sat ? "#ffcf6e" : "#b0352b", weight: 2.2, opacity: 0.95,
+          fillColor: f.h != null ? `hsl(${f.h} 60% ${sat || dark ? 62 : 55}%)` : (sat ? "#ffcf6e" : "#c8483c"),
+          fillOpacity: f.h != null ? (sat ? 0.3 : 0.22) : (sat ? 0.22 : 0.16) }
       : { color: `hsl(${h} 45% ${sat || dark ? 72 : 38}%)`, weight: 0.9, opacity: 0.75,
           fillColor: `hsl(${h} 55% ${sat || dark ? 62 : 58}%)`, fillOpacity: sat ? 0.2 : 0.13 };
     const pl = L.polygon(f.g, { renderer: borderR, className: "border-poly" + (china ? " border-china" : ""), ...style });
@@ -447,9 +453,9 @@ function buildBorders(d) {
   if ($("tgBorders").checked) borderLayer.addTo(map);
 }
 function showBorderTip(ev, f, d) {
-  const zh = f.c ? d.label + (f.z && f.z !== d.label ? `（数据中标为：${f.z}）` : "") : (f.z || f.n);
+  const zh = f.c && !f.l ? d.label : (f.z || f.n);
   tooltip.innerHTML = `<div class="nm"${f.c ? "" : ` style="color:hsl(${hueOf(f.n)} 50% 40%)"`}>${zh}</div>
-    <div class="meta">${f.n} · 疆域快照 ${snapshotLabel(d.borders.year)}</div>`;
+    <div class="meta">${f.n} · ${f.c ? "疆域" + (d.borders.note ? "：" + d.borders.note : "") : "疆域快照 " + snapshotLabel(d.borders.year)}</div>`;
   tooltip.classList.add("visible"); moveTip(ev);
 }
 function setOverlay(layer, on) {
@@ -488,9 +494,9 @@ function makeMarker(type, d) {
   let m;
   if (type === "region") {
     // 疆域名称：无圆点，居中写在多边形内部，优先级最低
-    node.className = "marker region";
+    node.className = "marker region" + (d.china ? " cn" : "");
     node.style.setProperty("--hc", d.hue);
-    m = { rank: 7, font: 12, dotPx: 0, gap: 0, minZoom: 0 };
+    m = d.china ? { rank: 1.5, font: 15, dotPx: 0, gap: 0, minZoom: 0 } : { rank: 7, font: 12, dotPx: 0, gap: 0, minZoom: 0 };
   } else if (type === "city") {
     const t = TIER[d.tier];
     node.className = `marker city tier-${d.tier}`;
@@ -658,7 +664,7 @@ function buildTimeline() {
     const d = DATA.dynasties[key];
     const b = document.createElement("button");
     b.className = "tl-item"; b.dataset.key = key;
-    b.innerHTML = `<span class="d"></span><span class="n kai">${d.label.replace(/朝$/, "")}</span><span class="y">${d.years.replace(/^公元/, "")}</span>`;
+    b.innerHTML = `<span class="d"></span><span class="n kai">${d.label.length === 2 ? d.label.replace(/朝$/, "") : d.label}</span><span class="y">${d.years.replace(/^公元/, "")}</span>`;
     b.addEventListener("click", () => selectDynasty(key));
     $("tlRow").appendChild(b);
   });
@@ -671,7 +677,7 @@ function selectDynasty(key) {
     b.setAttribute("aria-current", String(on));
   });
   centerTimeline();
-  $("dynName").textContent = d.label; $("dynYears").textContent = d.years;
+  $("dynName").textContent = d.label; $("dynName").classList.toggle("long", d.label.length > 3); $("dynYears").textContent = d.years;
   $("badgeName").textContent = d.label; $("openName").textContent = d.label; $("badgeYears").textContent = d.years;
   $("badgeCount").textContent = `同期世界 ${d.world.length} 个政权`;
   $("chipCities").textContent = `地名 ${d.cities.length} 处`;
@@ -707,11 +713,13 @@ function selectDynasty(key) {
 
   loadBorders(key).then(() => {
     if (currentKey !== key || !d.borders) return;   // 加载期间已切到别的朝代
-    $("chipBorders").textContent = `疆域：${snapshotLabel(d.borders.year)}`;
+    $("chipBorders").textContent = d.borders.note ? `疆域：${d.borders.note}` : `疆域：${snapshotLabel(d.borders.year)}`;
+    $("chipBorders").title = `本朝疆域：${d.borders.note || snapshotLabel(d.borders.year)}；他国疆域取 ${snapshotLabel(d.borders.year)} 快照`;
     buildBorders(d);
     for (const f of d.borders.features) {
-      if (f.c || f.m) continue;   // 本朝由地名表示；已有菱形标记的政权不重复标名
-      markers.push(makeMarker("region", { name: f.z || f.n, lat: f.p[0], lon: f.p[1], area: f.a, hue: hueOf(f.n) }));
+      // 统一王朝由地名表示，不标国名；分裂时期各政权（l）标名；已有菱形标记的政权不重复标名
+      if ((f.c && !f.l) || (f.m && !f.c)) continue;
+      markers.push(makeMarker("region", { name: f.z || f.n, lat: f.p[0], lon: f.p[1], area: f.a, hue: f.h ?? hueOf(f.n), china: !!f.c }));
     }
     relayout();
   });
