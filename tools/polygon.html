@@ -78,8 +78,8 @@ const baseLayers = {
         { subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21, attribution:'谷歌路网' }),
 };
 
-const map = L.map('map', { center:[39.5, -98.35], zoom:4, layers:[baseLayers.gmap] });
-let currentBase = baseLayers.gmap;
+const map = L.map('map', { center:[39.5, -98.35], zoom:4, layers:[baseLayers.osm] });
+let currentBase = baseLayers.osm;
 // 默认视野：美国本土全境
 map.fitBounds(L.latLngBounds([24.4, -125.0], [49.4, -66.9]));
 
@@ -91,9 +91,9 @@ const Panel = L.Control.extend({
   onAdd:function(){
     const d = L.DomUtil.create('div','layer-panel');
     d.innerHTML = `
-      <label><input type="radio" name="base" value="osm">OpenStreet路网</label>
+      <label><input type="radio" name="base" value="osm" checked>OpenStreet路网</label>
       <label><input type="radio" name="base" value="gsat">谷歌卫星</label>
-      <label><input type="radio" name="base" value="gmap" checked>谷歌路网</label>
+      <label><input type="radio" name="base" value="gmap">谷歌路网</label>
       <div class="sep"></div>
       <label><input type="checkbox" id="tg-vtx">顶点序号</label>
       <label><input type="checkbox" id="fit" checked>自动缩放</label>
