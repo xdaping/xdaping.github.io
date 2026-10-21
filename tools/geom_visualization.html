@@ -312,7 +312,9 @@ function splitJson(text){
     const c=text[i];
     if(c==='{'||c==='['){
       const end=matchBracket(text,i);
-      if(end>i){ jsons.push(text.slice(i,end+1)); plain+='\n'; i=end+1; continue; }
+      const frag=end>i ? text.slice(i,end+1) : '';
+      // [0] 这类行号前缀不是 GeoJSON，留在普通文本里作为标签
+      if(end>i && !/^\[\s*\d+\s*\]$/.test(frag)){ jsons.push(frag); plain+='\n'; i=end+1; continue; }
     }
     plain+=c; i++;
   }
@@ -357,11 +359,19 @@ function addGeoms(geoms, res){
 }
 
 /* ---------- WKT / 裸坐标 ---------- */
+// 行内 WKT 关键字前的文字视为标签，例如 "[0] mid_link 208331310(residential) LINESTRING (...)"
+const WKT_KW = /\b(?:MULTI)?(?:POINT|LINESTRING|POLYGON)\b/i;
+function splitLabel(row){
+  const m = row.match(WKT_KW);
+  if(!m || m.index===0) return { label:'', body:row };
+  return { label: row.slice(0, m.index).trim(), body: row.slice(m.index) };
+}
+const escHtml = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 解析点文本
 function parsePointsText(text){
   const pts=[];
   text.split(/[;\n]/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
-    const n=nums(line);
+    const n=nums(splitLabel(line).body);
     // 一行可能含多个 POINT 或多组坐标
     for(let i=0;i+1<n.length;i+=2) pts.push(toLatLng(n[i],n[i+1]));
   });
@@ -370,14 +380,16 @@ function parsePointsText(text){
 // 解析线文本：每行一条线（WKT 内可能含多段，用括号分组）
 function parseLinesText(text){
   const lines=[];
-  text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(row=>{
+  text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
+    const { label, body:row } = splitLabel(line);
+    const add = c => { if(c.length>=2){ if(label) c.label=label; lines.push(c); } };
     const groupsInParen = row.match(/\(([^()]*)\)/g);
     if(/MULTILINESTRING|MULTIPOLYGON|POLYGON/i.test(row) && groupsInParen){
-      groupsInParen.forEach(g=>{ const c=coords(g); if(c.length>=2) lines.push(c); });
+      groupsInParen.forEach(g=>add(coords(g)));
     } else if(/LINESTRING/i.test(row) && groupsInParen){
-      const c=coords(groupsInParen[0]); if(c.length>=2) lines.push(c);
+      add(coords(groupsInParen[0]));
     } else {
-      const c=coords(row); if(c.length>=2) lines.push(c);
+      add(coords(row));
     }
   });
   return lines;
@@ -385,7 +397,8 @@ function parseLinesText(text){
 // 解析面文本：每行一个多边形（可含多个环）
 function parsePolysText(text){
   const polys=[];
-  text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(row=>{
+  text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
+    const row=splitLabel(line).body;
     const rings=[];
     const inner = row.match(/\(([^()]*)\)/g);
     if(inner && inner.length){
@@ -529,7 +542,8 @@ function render(){
     document.getElementById('cnt-p').textContent=pts.length;
 
     lines.forEach((c,i)=>{
-      const pl=L.polyline(c, lineStyle).bindPopup(`线 ${i+1}（${c.length} 个顶点）`).addTo(groups.line);
+      const tip = `线 ${i+1}（${c.length} 个顶点）` + (c.label ? `<br>${escHtml(c.label)}` : '');
+      const pl=L.polyline(c, lineStyle).bindPopup(tip).addTo(groups.line);
       if(showVtx) addVtxLabels(c, groups.line, 'vtx-line', false);
       bounds.extend(pl.getBounds()); total++;
     });
