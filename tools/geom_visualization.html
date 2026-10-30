@@ -364,8 +364,12 @@ const WKT_KW = /\b(?:MULTI)?(?:POINT|LINESTRING|POLYGON)\b/i;
 function splitLabel(row){
   const m = row.match(WKT_KW);
   if(!m || m.index===0) return { label:'', body:row };
-  return { label: row.slice(0, m.index).trim(), body: row.slice(m.index) };
+  const label = row.slice(0, m.index).trim();
+  // "[LINESTRING (...), ...]" 这类列表的前导括号不算标签
+  return { label: /^[\[(\s,]*$/.test(label) ? '' : label, body: row.slice(m.index) };
 }
+// 一行里有多个 WKT 几何（如 "[LINESTRING (...), LINESTRING (...)]"）时按关键字切开
+const splitWkt = body => body.split(/(?=\b(?:MULTI)?(?:POINT|LINESTRING|POLYGON)\b)/i).filter(s=>WKT_KW.test(s) || s.trim());
 const escHtml = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 解析点文本
 function parsePointsText(text){
@@ -381,16 +385,18 @@ function parsePointsText(text){
 function parseLinesText(text){
   const lines=[];
   text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
-    const { label, body:row } = splitLabel(line);
+    const { label, body } = splitLabel(line);
     const add = c => { if(c.length>=2){ if(label) c.label=label; lines.push(c); } };
-    const groupsInParen = row.match(/\(([^()]*)\)/g);
-    if(/MULTILINESTRING|MULTIPOLYGON|POLYGON/i.test(row) && groupsInParen){
-      groupsInParen.forEach(g=>add(coords(g)));
-    } else if(/LINESTRING/i.test(row) && groupsInParen){
-      add(coords(groupsInParen[0]));
-    } else {
-      add(coords(row));
-    }
+    splitWkt(body).forEach(row=>{
+      const groupsInParen = row.match(/\(([^()]*)\)/g);
+      if(/MULTILINESTRING|MULTIPOLYGON|POLYGON/i.test(row) && groupsInParen){
+        groupsInParen.forEach(g=>add(coords(g)));
+      } else if(/LINESTRING/i.test(row) && groupsInParen){
+        add(coords(groupsInParen[0]));
+      } else {
+        add(coords(row));
+      }
+    });
   });
   return lines;
 }
@@ -398,15 +404,16 @@ function parseLinesText(text){
 function parsePolysText(text){
   const polys=[];
   text.split(/\n/).map(s=>s.trim()).filter(Boolean).forEach(line=>{
-    const row=splitLabel(line).body;
-    const rings=[];
-    const inner = row.match(/\(([^()]*)\)/g);
-    if(inner && inner.length){
-      inner.forEach(g=>{ const c=coords(g); if(c.length>=3) rings.push(c); });
-    } else {
-      const c=coords(row); if(c.length>=3) rings.push(c);
-    }
-    if(rings.length) polys.push(rings);
+    splitWkt(splitLabel(line).body).forEach(row=>{
+      const rings=[];
+      const inner = row.match(/\(([^()]*)\)/g);
+      if(inner && inner.length){
+        inner.forEach(g=>{ const c=coords(g); if(c.length>=3) rings.push(c); });
+      } else {
+        const c=coords(row); if(c.length>=3) rings.push(c);
+      }
+      if(rings.length) polys.push(rings);
+    });
   });
   return polys;
 }
