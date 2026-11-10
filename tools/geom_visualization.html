@@ -64,7 +64,9 @@
   .leaflet-tooltip.measure-label::before { display:none; }
 
   /* 右键显示坐标 */
-  .pick-popup { display:flex; align-items:center; gap:8px; font-size:13px; white-space:nowrap; }
+  .pick-popup { display:flex; flex-direction:column; gap:4px; font-size:13px; white-space:nowrap; }
+  .pick-popup .row { display:flex; align-items:center; gap:8px; }
+  .pick-popup .row .v { flex:1; }
   .pick-popup .k { color:#888; }
   .pick-popup .v { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:13px; }
   .btn {
@@ -612,12 +614,15 @@ map.on('contextmenu', e=>{
   if(e.originalEvent) L.DomEvent.preventDefault(e.originalEvent);
   if(drawing){ undoDrawPoint(); return; }   // 绘制中：右键撤销上一个点
   const lon = normLon(e.latlng.lng), lat = e.latlng.lat;
-  const txt = `${f6(lon)}, ${f6(lat)}`;
+  const rows = [
+    ['经度, 纬度', `${f6(lon)}, ${f6(lat)}`],
+    ['纬度, 经度', `${f6(lat)}, ${f6(lon)}`],
+  ];
   const d = L.DomUtil.create('div','pick-popup');
-  d.innerHTML = `<span class="k">坐标：</span><span class="v">${txt}</span><button class="btn">复制</button>`;
+  d.innerHTML = rows.map(([k,v])=>
+    `<div class="row"><span class="k">${k}：</span><span class="v">${v}</span><button class="btn">复制</button></div>`).join('');
   L.DomEvent.disableClickPropagation(d);
-  const btn = d.querySelector('button');
-  btn.addEventListener('click', ()=>copyText(txt, btn));
+  d.querySelectorAll('button').forEach((btn,i)=>btn.addEventListener('click', ()=>copyText(rows[i][1], btn)));
   pickPopup.setLatLng([lat, lon]).setContent(d).openOn(map);
 });
 // 兜底：屏蔽地图区域的浏览器默认右键菜单（弹窗/控制面板内仍可正常右键）
